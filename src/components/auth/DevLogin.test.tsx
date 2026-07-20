@@ -2,7 +2,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetMockData } from "../../api/mockAdapter";
-import { useChatStore } from "../../state/useChatStore";
 import { useNeighborhoodStore } from "../../state/useNeighborhoodStore";
 import { useSessionStore } from "../../state/useSessionStore";
 import { DevLogin } from "./DevLogin";
@@ -10,7 +9,6 @@ import { DevLogin } from "./DevLogin";
 beforeEach(() => {
   resetMockData();
   useSessionStore.getState().reset();
-  useChatStore.getState().reset();
   useNeighborhoodStore.getState().reset();
 });
 

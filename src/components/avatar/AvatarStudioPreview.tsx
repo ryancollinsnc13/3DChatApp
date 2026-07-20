@@ -1,4 +1,4 @@
-import { ContactShadows, OrbitControls } from "@react-three/drei";
+import { ContactShadows, OrthographicCamera } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Component, Suspense, useState } from "react";
 import type { ReactNode } from "react";
@@ -6,12 +6,16 @@ import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
 import type { AvatarConfig, AvatarModel } from "../../types/models";
 import { AvatarModel3D, type AvatarModelLoadInfo } from "./AvatarModel3D";
 
+export type AvatarPreviewView = "front" | "back" | "top";
+
 type AvatarStudioPreviewProps = {
   config: AvatarConfig;
   model?: AvatarModel | null;
+  motionMode?: "idle" | "walk";
   name: string;
   onModelLoaded?: (info: AvatarModelLoadInfo) => void;
   onModelError?: (message: string) => void;
+  viewMode?: AvatarPreviewView;
 };
 
 type ModelErrorBoundaryProps = {
@@ -50,12 +54,58 @@ class ModelErrorBoundary extends Component<ModelErrorBoundaryProps, ModelErrorBo
   }
 }
 
+const previewCameraSettings: Record<
+  AvatarPreviewView,
+  {
+    position: [number, number, number];
+    target: [number, number, number];
+    up: [number, number, number];
+    zoom: number;
+  }
+> = {
+  front: {
+    position: [0, 0.72, 4.2],
+    target: [0, 0.05, 0],
+    up: [0, 1, 0],
+    zoom: 145,
+  },
+  back: {
+    position: [0, 0.72, -4.2],
+    target: [0, 0.05, 0],
+    up: [0, 1, 0],
+    zoom: 145,
+  },
+  top: {
+    position: [0, 4.8, 0.01],
+    target: [0, -0.75, 0],
+    up: [0, 0, -1],
+    zoom: 170,
+  },
+};
+
+function PreviewCamera({ viewMode }: { viewMode: AvatarPreviewView }) {
+  const setting = previewCameraSettings[viewMode];
+
+  return (
+    <OrthographicCamera
+      key={viewMode}
+      makeDefault
+      onUpdate={(camera) => camera.lookAt(...setting.target)}
+      position={setting.position}
+      up={setting.up}
+      zoom={setting.zoom}
+    />
+  );
+}
+
 export function AvatarStudioPreview({
   config,
   model,
+  motionMode = "walk",
   name,
   onModelError,
   onModelLoaded,
+  viewMode = "front",
 }: AvatarStudioPreviewProps) {
   const modelKey = model?.sourceUrl ?? "starter-avatar";
   const [loadError, setLoadError] = useState<{ key: string; message: string } | null>(null);
@@ -70,7 +120,6 @@ export function AvatarStudioPreview({
   return (
     <div className="avatar-studio-card" data-testid="avatar-studio">
       <Canvas
-        camera={{ position: [0, 1.25, 4.2], zoom: 145 }}
         dpr={[1.5, 2]}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
         orthographic
@@ -83,6 +132,7 @@ export function AvatarStudioPreview({
         }}
         shadows
       >
+        <PreviewCamera viewMode={viewMode} />
         <color attach="background" args={["#dff5ff"]} />
         <ambientLight intensity={0.72} />
         <hemisphereLight color="#ffffff" groundColor="#8bd3a7" intensity={1.1} />
@@ -97,13 +147,13 @@ export function AvatarStudioPreview({
         <pointLight color="#fff6cf" intensity={0.85} position={[-2, 2.2, 2.4]} />
         <ModelErrorBoundary onError={handleModelError} resetKey={modelKey}>
           <Suspense fallback={null}>
-            <group key={modelKey} position={[0, -0.9, 0]} rotation={[0, 0.12, 0]}>
+            <group key={modelKey} position={[0, -0.9, 0]}>
               <AvatarModel3D
                 config={config}
                 model={model}
                 onModelLoaded={onModelLoaded}
                 scale={1.26}
-                walking
+                walking={motionMode === "walk"}
               />
             </group>
           </Suspense>
@@ -113,14 +163,6 @@ export function AvatarStudioPreview({
           <meshStandardMaterial color="#fff6cf" roughness={0.62} />
         </mesh>
         <ContactShadows blur={1.1} opacity={0.32} position={[0, -0.74, 0]} scale={2.8} />
-        <OrbitControls
-          autoRotate
-          autoRotateSpeed={0.22}
-          enablePan={false}
-          enableZoom={false}
-          maxPolarAngle={Math.PI / 2.08}
-          minPolarAngle={Math.PI / 2.6}
-        />
       </Canvas>
       {visibleLoadError ? (
         <div className="avatar-studio-error" data-testid="avatar-load-error">

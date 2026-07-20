@@ -46,6 +46,86 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.app-map-shell,
+.app-map-main,
+.map-screen {
+  width: 100vw;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-map-main {
+  margin: 0;
+  padding: 0;
+}
+
+.app-account-main {
+  min-height: 100dvh;
+  padding: 1rem 1rem 2rem;
+  padding-left: clamp(6.75rem, 13vw, 11rem);
+}
+
+.app-side-panel {
+  position: fixed;
+  left: 1rem;
+  top: 50%;
+  z-index: 60;
+  display: grid;
+  width: clamp(5.4rem, 10vw, 8.25rem);
+  gap: 0.6rem;
+  transform: translateY(-50%);
+  border: 2px solid #1f2933;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.92);
+  padding: 0.55rem;
+  box-shadow: 0 10px 0 #1f2933, 0 24px 60px rgb(31 41 51 / 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.app-side-panel-link {
+  display: grid;
+  min-height: 4.25rem;
+  align-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: rgb(31 41 51 / 0.68);
+  padding: 0.45rem 0.35rem;
+  text-align: center;
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.app-side-panel-link span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: clamp(0.62rem, 1.2vw, 0.78rem);
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.app-side-panel-link:hover,
+.app-side-panel-link-active {
+  border-color: #1f2933;
+  background: #fff6cf;
+  color: #1f2933;
+  transform: translateY(-1px);
+}
+
+.map-screen {
+  position: relative;
+  background: #bde9ff;
+}
+
+.map-loading {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  color: rgb(31 41 51 / 0.68);
+  font-weight: 900;
+}
+
 .scene-shell {
   position: relative;
   height: clamp(23rem, 62vw, 34rem);
@@ -55,6 +135,15 @@ button:disabled {
   border-radius: 8px;
   background: #dff5ff;
   box-shadow: inset 0 -18px 0 rgb(255 246 207 / 0.65);
+}
+
+.map-screen .scene-shell {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .scene-shell canvas {
@@ -81,6 +170,71 @@ button:disabled {
   line-height: 1;
   box-shadow: 0 8px 24px rgb(31 41 51 / 0.12);
   white-space: nowrap;
+}
+
+.scene-current-house-label {
+  display: grid;
+  min-width: 8rem;
+  justify-items: center;
+  gap: 0.18rem;
+  border: 2px solid #1f2933;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.94);
+  color: #1f2933;
+  padding: 0.48rem 0.65rem;
+  box-shadow: 0 7px 0 #1f2933, 0 18px 42px rgb(31 41 51 / 0.14);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.scene-current-house-label:hover {
+  background: #fff6cf;
+}
+
+.scene-current-house-label span {
+  color: #4f7b58;
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.scene-current-house-label strong {
+  max-width: 12rem;
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+}
+
+.map-current-house-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+  max-width: min(16rem, calc(100vw - 8.5rem));
+}
+
+.scene-plot-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgb(31 41 51 / 0.72);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.78);
+  color: rgb(31 41 51 / 0.68);
+  padding: 0.3rem 0.48rem;
+  font-family: inherit;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.scene-plot-label:hover {
+  background: rgb(255 246 207 / 0.92);
+  color: #1f2933;
 }
 
 .avatar-editor {
@@ -191,6 +345,78 @@ button:disabled {
   gap: 0.75rem;
 }
 
+.avatar-motion-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr) repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  border: 2px solid rgb(31 41 51 / 0.16);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.56);
+  padding: 0.85rem;
+}
+
+.avatar-motion-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.avatar-view-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.avatar-motion-toggle button,
+.avatar-view-toggle button,
+.avatar-animation-select select {
+  min-width: 0;
+  border: 2px solid #1f2933;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2933;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.avatar-motion-toggle button,
+.avatar-view-toggle button {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.5rem;
+}
+
+.avatar-motion-toggle button:hover,
+.avatar-view-toggle button:hover,
+.avatar-motion-toggle-active {
+  background: #fff6cf !important;
+}
+
+.avatar-animation-select {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.avatar-animation-select span {
+  color: rgb(31 41 51 / 0.7);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.avatar-animation-select select {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.55rem;
+  outline: none;
+}
+
+.avatar-animation-select select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .avatar-file-drop {
   display: grid;
   min-height: 7.5rem;
@@ -272,7 +498,7 @@ button:disabled {
 
 .avatar-fit-panel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 1rem;
   border: 2px solid rgb(31 41 51 / 0.16);
@@ -747,6 +973,29 @@ button:disabled {
 }
 
 @media (max-width: 520px) {
+  .app-account-main {
+    padding: 1rem 1rem 6.5rem;
+  }
+
+  .app-side-panel {
+    inset: auto 1rem 1rem 1rem;
+    top: auto;
+    width: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    transform: none;
+  }
+
+  .app-side-panel-link {
+    min-height: 3.5rem;
+  }
+
+  .map-current-house-button {
+    left: 1rem;
+    right: 1rem;
+    top: 1rem;
+    max-width: none;
+  }
+
   .scene-shell {
     height: 25rem;
   }
@@ -771,7 +1020,8 @@ button:disabled {
   }
 
   .avatar-upload-grid,
-  .avatar-fit-panel {
+  .avatar-fit-panel,
+  .avatar-motion-panel {
     grid-template-columns: 1fr;
   }
 }

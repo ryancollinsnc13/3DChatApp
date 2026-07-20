@@ -273,97 +273,9 @@ const houses: Record<string, House> = {
   },
 };
 
-const conversations: Conversation[] = [
-  {
-    conversationId: "c-mara",
-    conversationType: "dm",
-    title: "Mara",
-    participantIds: ["p1", "p2"],
-    unreadCount: 2,
-    lastMessagePreview: "Left a note by your porch.",
-    lastMessageAt: "2026-06-24T19:52:00.000Z",
-  },
-  {
-    conversationId: "c-neighborhood",
-    conversationType: "group",
-    title: "Neighborhood Loop",
-    participantIds: ["p1", "p2", "p3", "p4"],
-    unreadCount: 5,
-    lastMessagePreview: "Jun: Who wants to try the new map view?",
-    lastMessageAt: "2026-06-24T19:38:00.000Z",
-  },
-  {
-    conversationId: "c-jun",
-    conversationType: "dm",
-    title: "Jun",
-    participantIds: ["p1", "p3"],
-    unreadCount: 0,
-    lastMessagePreview: "Back after dinner.",
-    lastMessageAt: "2026-06-24T18:10:00.000Z",
-  },
-  {
-    conversationId: "c-sol",
-    conversationType: "dm",
-    title: "Sol",
-    participantIds: ["p1", "p4"],
-    unreadCount: 0,
-    lastMessagePreview: "Saved the thread for later.",
-    lastMessageAt: "2026-06-24T15:31:00.000Z",
-  },
-];
+const conversations: Conversation[] = [];
 
-const messages: Record<string, Message[]> = {
-  "c-mara": [
-    {
-      messageId: "m1",
-      conversationId: "c-mara",
-      senderId: "p2",
-      text: "I tuned my house status to point people to the group thread.",
-      createdAt: "2026-06-24T19:41:00.000Z",
-    },
-    {
-      messageId: "m2",
-      conversationId: "c-mara",
-      senderId: "p2",
-      text: "Left a note by your porch.",
-      createdAt: "2026-06-24T19:52:00.000Z",
-    },
-  ],
-  "c-neighborhood": [
-    {
-      messageId: "m3",
-      conversationId: "c-neighborhood",
-      senderId: "p4",
-      text: "The unread badges make it much easier to decide where to go first.",
-      createdAt: "2026-06-24T19:10:00.000Z",
-    },
-    {
-      messageId: "m4",
-      conversationId: "c-neighborhood",
-      senderId: "p3",
-      text: "Who wants to try the new map view?",
-      createdAt: "2026-06-24T19:38:00.000Z",
-    },
-  ],
-  "c-jun": [
-    {
-      messageId: "m5",
-      conversationId: "c-jun",
-      senderId: "p3",
-      text: "Back after dinner.",
-      createdAt: "2026-06-24T18:10:00.000Z",
-    },
-  ],
-  "c-sol": [
-    {
-      messageId: "m6",
-      conversationId: "c-sol",
-      senderId: "p4",
-      text: "Saved the thread for later.",
-      createdAt: "2026-06-24T15:31:00.000Z",
-    },
-  ],
-};
+const messages: Record<string, Message[]> = {};
 
 const neighborhood: Neighborhood = {
   neighborhoodId: "n1",
@@ -381,63 +293,12 @@ const neighborhood: Neighborhood = {
     unreadCount: 0,
     lastActivity: "2026-06-24T19:30:00.000Z",
   },
-  houseSlots: [
-    {
-      slotIndex: 1,
-      ownerPlayerId: "p2",
-      displayName: "Mara",
-      relationship: "friend",
-      presence: "online",
-      exteriorPreset: "moss-cottage",
-      avatarConfig: avatarConfigs.sprout,
-      avatarModel: starterAvatarModel,
-      unreadCount: 2,
-      lastActivity: "2026-06-24T19:52:00.000Z",
-    },
-    {
-      slotIndex: 2,
-      ownerPlayerId: "p3",
-      displayName: "Jun",
-      relationship: "friend",
-      presence: "away",
-      exteriorPreset: "tide-studio",
-      avatarConfig: avatarConfigs.tide,
-      avatarModel: starterAvatarModel,
-      unreadCount: 0,
-      lastActivity: "2026-06-24T18:10:00.000Z",
-    },
-    {
-      slotIndex: 3,
-      ownerPlayerId: "p4",
-      displayName: "Sol",
-      relationship: "friend",
-      presence: "offline",
-      exteriorPreset: "honey-loft",
-      avatarConfig: avatarConfigs.sunbeam,
-      avatarModel: starterAvatarModel,
-      unreadCount: 5,
-      lastActivity: "2026-06-24T19:38:00.000Z",
-    },
-  ],
+  houseSlots: [],
 };
 
-const directory: DirectoryUser[] = [
-  { playerId: "p2", username: "mara", displayName: "Mara", presence: "online", avatarPresetId: "sprout", avatarConfig: avatarConfigs.sprout, avatarModel: starterAvatarModel, relationship: "friend" },
-  { playerId: "p3", username: "jun", displayName: "Jun", presence: "away", avatarPresetId: "tide", avatarConfig: avatarConfigs.tide, avatarModel: starterAvatarModel, relationship: "friend" },
-  { playerId: "p4", username: "sol", displayName: "Sol", presence: "offline", avatarPresetId: "sunbeam", avatarConfig: avatarConfigs.sunbeam, avatarModel: starterAvatarModel, relationship: "friend" },
-  { playerId: "p5", username: "nora", displayName: "Nora", presence: "online", avatarPresetId: "lilac", avatarConfig: avatarConfigs.lilac, avatarModel: starterAvatarModel, relationship: "none" },
-  { playerId: "p6", username: "dev", displayName: "Dev", presence: "away", avatarPresetId: "tide", avatarConfig: avatarConfigs.tide, avatarModel: starterAvatarModel, relationship: "none" },
-];
+const directory: DirectoryUser[] = [];
 
-const friendRequests: FriendRequest[] = [
-  {
-    requestId: "fr-1",
-    fromPlayerId: "p6",
-    toPlayerId: "p1",
-    status: "incoming",
-    createdAt: "2026-06-24T17:24:00.000Z",
-  },
-];
+const friendRequests: FriendRequest[] = [];
 
 export function createMockDatabase(): MockDatabase {
   return structuredClone({

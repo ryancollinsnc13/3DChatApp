@@ -1,10 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 
-async function completeOnboarding(page: Page) {
+async function completeOnboarding(page: Page, uploadModel = false) {
   await page.goto("/");
   await page.getByTestId("login-submit").click();
   await expect(page.getByRole("heading", { name: "Upload your walker" })).toBeVisible();
+  if (uploadModel) {
+    await page.getByTestId("avatar-model-file").setInputFiles("public/models/game/character-base.glb");
+    await expect(page.getByTestId("avatar-model-name")).toContainText("character-base");
+    await page.getByTestId("avatar-scale-slider").fill("0.72");
+    await page.getByTestId("avatar-rotation-slider").fill("180");
+    await page.getByTestId("avatar-center-x-slider").fill("0.12");
+    await page.getByTestId("avatar-center-z-slider").fill("-0.08");
+  }
   await page.getByTestId("avatar-submit").click();
   await expect(page).toHaveURL(/\/home/);
   await expect(page.locator("[data-testid='neighborhood-canvas'] canvas")).toBeVisible();
@@ -31,50 +39,52 @@ async function expectCanvasHasPixels(page: Page) {
   expect(changed).toBeGreaterThan(20);
 }
 
-test("onboards into a rendered spatial home", async ({ page }) => {
+test("onboards into a focused full-screen neighborhood map", async ({ page }) => {
   await completeOnboarding(page);
-  await expect(page.getByRole("heading", { name: "Ryan's Porch" })).toBeVisible();
+  await expect(page.getByTestId("map-screen")).toBeVisible();
+  await expect(page.getByTestId("current-house-label")).toContainText("Your house");
+  await expect(page.getByTestId("current-house-label")).toContainText("Ryan's Porch");
+  await expect(page.locator("[data-testid^='empty-plot-']")).toHaveCount(8);
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "idle");
+  await page.getByTestId("empty-plot-5").click();
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "walk");
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "idle", { timeout: 4_000 });
+  await expect(page.getByRole("link", { name: /Neighbourhood/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Account/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Chat/i })).toHaveCount(0);
   await expectCanvasHasPixels(page);
-  await page.getByTestId("enter-my-house").click();
-  await expect(page.getByTestId("room-controls")).toContainText("Inside Ryan's Porch");
-  await page.getByTestId("invite-p2").click();
-  await expect(page.getByTestId("room-controls")).toContainText("Mara");
+  await page.getByTestId("current-house-label").click();
+  await expect(page.getByTestId("room-banner")).toContainText("Ryan's Porch");
   await expectCanvasHasPixels(page);
+  await page.getByTestId("exit-room").click();
+  await expect(page.getByTestId("current-house-label")).toContainText("Ryan's Porch");
 });
 
-test("updates profile, handles neighbors, visits a house, and sends a message", async ({ page }) => {
-  await completeOnboarding(page);
-
-  await page.getByRole("link", { name: /Avatar/i }).click();
-  await expect(page).toHaveURL(/\/avatar/);
-  await expect(page.getByRole("heading", { name: "Your walking model" })).toBeVisible();
-  await page.getByTestId("avatar-model-file").setInputFiles("public/models/game/character-base.glb");
+test("uses the uploaded GLB as the current house avatar on the map", async ({ page }) => {
+  await completeOnboarding(page, true);
+  await expect(page.getByTestId("current-house-label")).toContainText("Ryan's Porch");
+  await expect(page.locator("[data-testid='neighborhood-canvas'] canvas")).toBeVisible();
+  await expectCanvasHasPixels(page);
+  await page.getByRole("link", { name: /Account/i }).click();
+  await expect(page).toHaveURL(/\/account/);
+  await expect(page.getByRole("heading", { name: "Avatar and profile" })).toBeVisible();
   await expect(page.getByTestId("avatar-model-name")).toContainText("character-base");
-  await page.getByTestId("avatar-scale-slider").fill("1.12");
-  await page.getByRole("button", { name: /Save model/i }).click();
-  await expect(page.getByRole("heading", { name: "character-base.glb" })).toBeVisible();
-
-  await page.getByRole("link", { name: /Home/i }).click();
+  await expect(page.getByTestId("avatar-rotation-slider")).toHaveValue("180");
+  await expect(page.getByTestId("avatar-center-x-slider")).toHaveValue("0.12");
+  await expect(page.getByTestId("avatar-center-z-slider")).toHaveValue("-0.08");
+  await expect(page.getByTestId("avatar-preview-view-front")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("avatar-preview-view-back").click();
+  await expect(page.getByTestId("avatar-preview-view-back")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("avatar-preview-view-top").click();
+  await expect(page.getByTestId("avatar-preview-view-top")).toHaveAttribute("aria-selected", "true");
+  await page.getByTestId("avatar-preview-idle").click();
+  await expect(page.getByTestId("avatar-preview-idle")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("avatar-idle-animation")).toBeDisabled();
+  await expect(page.getByTestId("avatar-walk-animation")).toBeDisabled();
+  await page.getByRole("link", { name: /Neighbourhood/i }).click();
   await expect(page).toHaveURL(/\/home/);
-
-  await page.getByTestId("house-status").fill("Testing the house controls");
-  await page.getByTestId("privacy-private").click();
-  await page.getByTestId("save-profile").click();
-  await expect(page.getByTestId("privacy-pill")).toContainText("Private");
-
-  await page.getByTestId("accept-fr-1").click();
-  await expect(page.getByTestId("feed-house-p6")).toBeVisible();
-
-  await page.getByTestId("request-p5").click();
-  await expect(page.getByTestId("request-p5")).toContainText("Sent");
-
-  await page.getByTestId("feed-house-p2").click();
-  await expect(page.getByTestId("visit-panel")).toContainText("Mara's Greenhouse");
-  await page.getByTestId("open-house-chat").click();
-  await expect(page).toHaveURL(/\/chat/);
-  await expect(page.getByRole("heading", { name: "Mara" })).toBeVisible();
-
-  await page.getByTestId("message-input").fill("See you by the porch.");
-  await page.getByTestId("message-input").press("Enter");
-  await expect(page.getByTestId("message-thread")).toContainText("See you by the porch.");
+  await expect(page.getByTestId("current-house-label")).toContainText("Ryan's Porch");
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-turn", "180");
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-center-x", "0.12");
+  await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-center-z", "-0.08");
 });

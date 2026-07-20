@@ -23,21 +23,26 @@ export function AvatarPage() {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <section>
         <AvatarUploadStudio
-          eyebrow="Avatar Model"
+          eyebrow="Account"
           isSaving={isLoading}
           onSave={handleSave}
           player={player}
-          submitLabel="Save model"
-          title="Your walking model"
+          submitLabel="Save account"
+          title="Avatar and profile"
         />
       </section>
 
       <aside className="avatar-page-aside">
         <div>
+          <p className="text-sm font-black text-moss">Profile</p>
+          <h2 className="mt-1 break-words text-xl font-black">{player.displayName}</h2>
+          <p className="mt-1 text-sm font-bold text-ink/60">@{player.username}</p>
+        </div>
+        <div>
           <p className="text-sm font-black text-tide">Current file</p>
-          <h2 className="mt-1 break-words text-xl font-black">
+          <h3 className="mt-1 break-words text-lg font-black">
             {player.avatarModel?.fileName ?? player.avatarModel?.name ?? "Starter Walker"}
-          </h2>
+          </h3>
         </div>
         <dl className="avatar-model-details">
           <div>
@@ -51,6 +56,16 @@ export function AvatarPage() {
           <div>
             <dt>Floor offset</dt>
             <dd>{(player.avatarModel?.yOffset ?? 0).toFixed(2)}</dd>
+          </div>
+          <div>
+            <dt>Turn</dt>
+            <dd>{Math.round(player.avatarModel?.rotationY ?? 0)} deg</dd>
+          </div>
+          <div>
+            <dt>Center</dt>
+            <dd>
+              {(player.avatarModel?.xOffset ?? 0).toFixed(2)}, {(player.avatarModel?.zOffset ?? 0).toFixed(2)}
+            </dd>
           </div>
         </dl>
       </aside>

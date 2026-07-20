@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import {
   Box3,
+  MathUtils,
   Mesh,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
@@ -26,6 +27,8 @@ type AvatarModel3DProps = {
 
 export type AvatarModelLoadInfo = {
   animationCount: number;
+  animationNames: string[];
+  idleAnimationName?: string;
   sourceType: AvatarModel["sourceType"];
   walkAnimationName?: string;
 };
@@ -98,12 +101,43 @@ function positionWithYOffset(position: [number, number, number], yOffset: number
   return [position[0], position[1] + yOffset, position[2]] as [number, number, number];
 }
 
+function positionWithModelOffsets(position: [number, number, number], model?: AvatarModel | null) {
+  return [
+    position[0] + (model?.xOffset ?? 0),
+    position[1] + (model?.yOffset ?? 0),
+    position[2] + (model?.zOffset ?? 0),
+  ] as [number, number, number];
+}
+
+function rotationWithModelTurn(rotation: [number, number, number], model?: AvatarModel | null) {
+  return [
+    rotation[0],
+    rotation[1] + MathUtils.degToRad(model?.rotationY ?? 0),
+    rotation[2],
+  ] as [number, number, number];
+}
+
 function chooseWalkAnimationName(names: string[]) {
   const walkName = names.find((name) => {
     const normalized = name.toLowerCase();
     return ["walk", "run", "jog", "move", "locomotion"].some((keyword) => normalized.includes(keyword));
   });
   return walkName ?? names[0];
+}
+
+function chooseIdleAnimationName(names: string[]) {
+  const idleName = names.find((name) => {
+    const normalized = name.toLowerCase();
+    return ["idle", "stand", "breath", "rest", "wait"].some((keyword) => normalized.includes(keyword));
+  });
+  return idleName ?? names[0];
+}
+
+function selectedAnimationName(names: string[], preferredName: string | undefined, fallbackName: string | undefined) {
+  if (preferredName && names.includes(preferredName)) {
+    return preferredName;
+  }
+  return fallbackName;
 }
 
 function getUploadedModelFit(root: Object3D) {
@@ -164,7 +198,6 @@ function ConfigurableAvatarModel({
   Pick<AvatarModel3DProps, "model" | "walking" | "scale" | "onModelLoaded">) {
   const gltf = useGLTF(characterModelPath);
   const scene = useMemo(() => cloneAndTuneScene(gltf.scene), [gltf.scene]);
-  const yOffset = model?.yOffset ?? 0;
   const modelScale = model?.scale ?? 1;
 
   useEffect(() => {
@@ -335,7 +368,7 @@ function ConfigurableAvatarModel({
   }, [config, scene]);
 
   useEffect(() => {
-    onModelLoaded?.({ animationCount: 0, sourceType: "starter" });
+    onModelLoaded?.({ animationCount: 0, animationNames: [], sourceType: "starter" });
   }, [onModelLoaded]);
 
   useFrame(({ clock }) => {
@@ -345,8 +378,8 @@ function ConfigurableAvatarModel({
   return (
     <primitive
       object={scene}
-      position={positionWithYOffset(position, yOffset)}
-      rotation={rotation}
+      position={positionWithModelOffsets(position, model)}
+      rotation={rotationWithModelTurn(rotation, model)}
       scale={multiplyScale(scale, modelScale)}
     />
   );
@@ -367,13 +400,25 @@ function UploadedAvatarModel({
   scale?: number | [number, number, number];
   onModelLoaded?: (info: AvatarModelLoadInfo) => void;
 }) {
-  const groupRef = useRef<Group>(null);
+  const motionGroupRef = useRef<Group>(null);
   const gltf = useGLTF(model.sourceUrl);
   const scene = useMemo(() => cloneAndTuneScene(gltf.scene), [gltf.scene]);
   const fit = useMemo(() => getUploadedModelFit(scene), [scene]);
-  const { actions, names } = useAnimations(gltf.animations, groupRef);
-  const animationName = useMemo(() => chooseWalkAnimationName(names), [names]);
-  const basePosition = positionWithYOffset(position, model.yOffset);
+  const { actions, names } = useAnimations(gltf.animations, scene);
+  const fallbackIdleAnimationName = useMemo(() => chooseIdleAnimationName(names), [names]);
+  const fallbackWalkAnimationName = useMemo(() => chooseWalkAnimationName(names), [names]);
+  const idleAnimationName = useMemo(
+    () => selectedAnimationName(names, model.idleAnimationName, fallbackIdleAnimationName),
+    [fallbackIdleAnimationName, model.idleAnimationName, names],
+  );
+  const walkAnimationName = useMemo(
+    () => selectedAnimationName(names, model.walkAnimationName, fallbackWalkAnimationName),
+    [fallbackWalkAnimationName, model.walkAnimationName, names],
+  );
+  const animationName = walking ? walkAnimationName : idleAnimationName;
+  const basePosition = positionWithYOffset(position, model.yOffset ?? 0);
+  const calibratedRotation = rotationWithModelTurn(rotation, model);
+  const horizontalOffset = [model.xOffset ?? 0, 0, model.zOffset ?? 0] as [number, number, number];
 
   useEffect(() => {
     tuneModelMaterials(scene);
@@ -382,17 +427,24 @@ function UploadedAvatarModel({
   useEffect(() => {
     onModelLoaded?.({
       animationCount: names.length,
+      animationNames: names,
+      idleAnimationName,
       sourceType: model.sourceType,
-      walkAnimationName: animationName,
+      walkAnimationName,
     });
-  }, [animationName, model.sourceType, names.length, onModelLoaded]);
+  }, [idleAnimationName, model.sourceType, names, onModelLoaded, walkAnimationName]);
 
   useEffect(() => {
     const action = animationName ? actions[animationName] : null;
-    if (!walking || !action) {
+    if (!action) {
       return;
     }
 
+    Object.values(actions).forEach((currentAction) => {
+      if (currentAction && currentAction !== action) {
+        currentAction.fadeOut(0.12);
+      }
+    });
     action.reset().fadeIn(0.16).play();
     return () => {
       action.fadeOut(0.16);
@@ -400,29 +452,39 @@ function UploadedAvatarModel({
   }, [actions, animationName, walking]);
 
   useFrame(({ clock }) => {
-    if (!groupRef.current) {
+    if (!motionGroupRef.current) {
       return;
     }
 
-    if (!walking || animationName) {
-      groupRef.current.position.y = basePosition[1];
+    if (animationName) {
+      motionGroupRef.current.position.y = 0;
+      motionGroupRef.current.rotation.z = 0;
       return;
     }
 
     const elapsed = clock.getElapsedTime();
-    groupRef.current.position.y = basePosition[1] + Math.abs(Math.sin(elapsed * 5.2)) * 0.035;
-    groupRef.current.rotation.z = Math.sin(elapsed * 4.6) * 0.025;
+    if (walking) {
+      motionGroupRef.current.position.y = 0;
+      motionGroupRef.current.rotation.z = Math.sin(elapsed * 4.6) * 0.025;
+      return;
+    }
+
+    motionGroupRef.current.position.y = 0;
+    motionGroupRef.current.rotation.z = Math.sin(elapsed * 1.2) * 0.01;
   });
 
   return (
     <group
-      ref={groupRef}
       position={basePosition}
-      rotation={rotation}
-      scale={multiplyScale(scale, model.scale)}
+      rotation={calibratedRotation}
+      scale={multiplyScale(scale, model.scale ?? 1)}
     >
-      <group scale={fit.scale}>
-        <primitive object={scene} position={fit.offset} />
+      <group position={horizontalOffset}>
+        <group ref={motionGroupRef}>
+          <group scale={fit.scale}>
+            <primitive object={scene} position={fit.offset} />
+          </group>
+        </group>
       </group>
     </group>
   );

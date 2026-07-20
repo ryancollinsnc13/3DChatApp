@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { ArrowRight, MessageCircle, Sparkles } from "lucide-react";
+import { ArrowRight, Home, Sparkles } from "lucide-react";
 import { useSessionStore } from "../../state/useSessionStore";
 
 export function DevLogin() {
@@ -19,11 +19,11 @@ export function DevLogin() {
         <section className="rounded-lg border-2 border-ink bg-white p-5 shadow-soft">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase text-moss">3D Chat App</p>
+              <p className="text-sm font-semibold uppercase text-moss">3D House Prototype</p>
               <h1 className="mt-2 text-3xl font-black">Dev Login</h1>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-mint text-moss">
-              <MessageCircle aria-hidden="true" size={28} />
+              <Home aria-hidden="true" size={28} />
             </div>
           </div>
 
@@ -46,7 +46,7 @@ export function DevLogin() {
               data-testid="login-submit"
             >
               <Sparkles aria-hidden="true" size={18} />
-              {isLoading ? "Opening..." : "Enter neighborhood"}
+              {isLoading ? "Opening..." : "Enter house"}
               <ArrowRight aria-hidden="true" size={18} />
             </button>
           </form>

@@ -18,7 +18,12 @@ export type AvatarModel = {
   fileName?: string;
   uploadedAt: string;
   scale: number;
+  rotationY?: number;
+  xOffset?: number;
   yOffset: number;
+  zOffset?: number;
+  idleAnimationName?: string;
+  walkAnimationName?: string;
 };
 
 export type AvatarConfig = {

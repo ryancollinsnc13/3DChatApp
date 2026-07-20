@@ -3,6 +3,7 @@ import { Box, CheckCircle2, RotateCcw, Save, UploadCloud } from "lucide-react";
 import { starterAvatarModel } from "../../data/avatarModels";
 import type { AvatarConfig, AvatarModel, Player } from "../../types/models";
 import { AvatarStudioPreview } from "./AvatarStudioPreview";
+import type { AvatarPreviewView } from "./AvatarStudioPreview";
 import type { AvatarModelLoadInfo } from "./AvatarModel3D";
 
 type AvatarUploadStudioProps = {
@@ -15,6 +16,8 @@ type AvatarUploadStudioProps = {
 };
 
 const maxUploadBytes = 128 * 1024 * 1024;
+type PreviewMotionMode = "idle" | "walk";
+const previewViews: AvatarPreviewView[] = ["front", "back", "top"];
 
 function createUploadedModel(file: File): AvatarModel {
   const cleanName = file.name.replace(/\.(glb|gltf)$/i, "");
@@ -26,8 +29,11 @@ function createUploadedModel(file: File): AvatarModel {
     sourceType: "upload",
     fileName: file.name,
     uploadedAt: new Date().toISOString(),
+    rotationY: 0,
     scale: 1,
+    xOffset: 0,
     yOffset: 0,
+    zOffset: 0,
   };
 }
 
@@ -43,10 +49,25 @@ export function AvatarUploadStudio({
   const [model, setModel] = useState<AvatarModel>(() => player.avatarModel ?? starterAvatarModel);
   const [config] = useState<AvatarConfig>(player.avatarConfig);
   const [modelInfo, setModelInfo] = useState<AvatarModelLoadInfo | null>(null);
+  const [previewMotion, setPreviewMotion] = useState<PreviewMotionMode>("walk");
+  const [previewView, setPreviewView] = useState<AvatarPreviewView>("front");
   const [error, setError] = useState<string | null>(null);
 
   const handleModelLoaded = useCallback((info: AvatarModelLoadInfo) => {
     setModelInfo(info);
+    setModel((current) => {
+      if (current.sourceType !== "upload" || info.animationNames.length === 0) {
+        return current;
+      }
+
+      const idleAnimationName = current.idleAnimationName ?? info.idleAnimationName ?? info.animationNames[0];
+      const walkAnimationName = current.walkAnimationName ?? info.walkAnimationName ?? info.animationNames[0];
+      if (current.idleAnimationName === idleAnimationName && current.walkAnimationName === walkAnimationName) {
+        return current;
+      }
+
+      return { ...current, idleAnimationName, walkAnimationName };
+    });
   }, []);
 
   const handleModelError = useCallback((message: string) => {
@@ -54,7 +75,13 @@ export function AvatarUploadStudio({
     setError(message);
   }, []);
 
-  const updateModelFit = (update: Pick<AvatarModel, "scale"> | Pick<AvatarModel, "yOffset">) => {
+  const updateModelFit = (
+    update: Partial<Pick<AvatarModel, "rotationY" | "scale" | "xOffset" | "yOffset" | "zOffset">>,
+  ) => {
+    setModel((current) => ({ ...current, ...update }));
+  };
+
+  const updateAnimation = (update: Pick<AvatarModel, "idleAnimationName"> | Pick<AvatarModel, "walkAnimationName">) => {
     setModel((current) => ({ ...current, ...update }));
   };
 
@@ -79,6 +106,8 @@ export function AvatarUploadStudio({
 
     setError(null);
     setModelInfo(null);
+    setPreviewMotion("walk");
+    setPreviewView("front");
     setModel(createUploadedModel(file));
   };
 
@@ -87,8 +116,10 @@ export function AvatarUploadStudio({
     void onSave(displayName, model, config);
   };
 
-  const motionLabel = modelInfo?.animationCount
-    ? `Rigged: ${modelInfo.walkAnimationName ?? "animation clip"}`
+  const animationNames = modelInfo?.animationNames ?? [];
+  const hasAnimations = animationNames.length > 0;
+  const motionLabel = hasAnimations
+    ? `${animationNames.length} clips available`
     : "Procedural walk";
 
   return (
@@ -107,10 +138,76 @@ export function AvatarUploadStudio({
       <AvatarStudioPreview
         config={config}
         model={model}
+        motionMode={previewMotion}
         name={displayName}
         onModelError={handleModelError}
         onModelLoaded={handleModelLoaded}
+        viewMode={previewView}
       />
+
+      <div className="avatar-motion-panel">
+        <div>
+          <span className="text-sm font-bold text-ink/70">Preview</span>
+          <div className="avatar-motion-toggle" role="tablist" aria-label="Preview animation mode">
+            <button
+              aria-selected={previewMotion === "idle"}
+              className={previewMotion === "idle" ? "avatar-motion-toggle-active" : ""}
+              data-testid="avatar-preview-idle"
+              onClick={() => setPreviewMotion("idle")}
+              role="tab"
+              type="button"
+            >
+              Idle
+            </button>
+            <button
+              aria-selected={previewMotion === "walk"}
+              className={previewMotion === "walk" ? "avatar-motion-toggle-active" : ""}
+              data-testid="avatar-preview-walk"
+              onClick={() => setPreviewMotion("walk")}
+              role="tab"
+              type="button"
+            >
+              Walk
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <span className="text-sm font-bold text-ink/70">View</span>
+          <div className="avatar-view-toggle" role="tablist" aria-label="Preview camera view">
+            {previewViews.map((view) => (
+              <button
+                aria-selected={previewView === view}
+                className={previewView === view ? "avatar-motion-toggle-active" : ""}
+                data-testid={`avatar-preview-view-${view}`}
+                key={view}
+                onClick={() => setPreviewView(view)}
+                role="tab"
+                type="button"
+              >
+                {view.slice(0, 1).toUpperCase() + view.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <AnimationSelect
+          disabled={!hasAnimations}
+          label="Idle animation"
+          onChange={(idleAnimationName) => updateAnimation({ idleAnimationName })}
+          options={animationNames}
+          testId="avatar-idle-animation"
+          value={model.idleAnimationName ?? modelInfo?.idleAnimationName ?? ""}
+        />
+        <AnimationSelect
+          disabled={!hasAnimations}
+          label="Walk animation"
+          onChange={(walkAnimationName) => updateAnimation({ walkAnimationName })}
+          options={animationNames}
+          testId="avatar-walk-animation"
+          value={model.walkAnimationName ?? modelInfo?.walkAnimationName ?? ""}
+        />
+      </div>
 
       <div className="avatar-upload-grid">
         <label className="avatar-file-drop">
@@ -139,6 +236,8 @@ export function AvatarUploadStudio({
               onClick={() => {
                 setModel(starterAvatarModel);
                 setModelInfo(null);
+                setPreviewMotion("walk");
+                setPreviewView("front");
                 setError(null);
               }}
               type="button"
@@ -167,7 +266,7 @@ export function AvatarUploadStudio({
           min={0.08}
           onChange={(value) => updateModelFit({ scale: value })}
           testId="avatar-scale-slider"
-          value={model.scale}
+          value={model.scale ?? 1}
         />
         <ModelSlider
           label="Floor offset"
@@ -175,7 +274,33 @@ export function AvatarUploadStudio({
           min={-1.2}
           onChange={(value) => updateModelFit({ yOffset: value })}
           testId="avatar-offset-slider"
-          value={model.yOffset}
+          value={model.yOffset ?? 0}
+        />
+        <ModelSlider
+          formatValue={(value) => `${Math.round(value)} deg`}
+          label="Turn"
+          max={180}
+          min={-180}
+          onChange={(value) => updateModelFit({ rotationY: value })}
+          step={1}
+          testId="avatar-rotation-slider"
+          value={model.rotationY ?? 0}
+        />
+        <ModelSlider
+          label="Center X"
+          max={1}
+          min={-1}
+          onChange={(value) => updateModelFit({ xOffset: value })}
+          testId="avatar-center-x-slider"
+          value={model.xOffset ?? 0}
+        />
+        <ModelSlider
+          label="Center Z"
+          max={1}
+          min={-1}
+          onChange={(value) => updateModelFit({ zOffset: value })}
+          testId="avatar-center-z-slider"
+          value={model.zOffset ?? 0}
         />
       </div>
 
@@ -194,18 +319,60 @@ export function AvatarUploadStudio({
   );
 }
 
+function AnimationSelect({
+  disabled,
+  label,
+  onChange,
+  options,
+  testId,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (value: string) => void;
+  options: string[];
+  testId: string;
+  value: string;
+}) {
+  return (
+    <label className="avatar-animation-select">
+      <span>{label}</span>
+      <select
+        data-testid={testId}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {options.length > 0 ? (
+          options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))
+        ) : (
+          <option value="">No GLB clips</option>
+        )}
+      </select>
+    </label>
+  );
+}
+
 function ModelSlider({
+  formatValue = (value) => value.toFixed(2),
   label,
   max,
   min,
   onChange,
+  step = 0.01,
   testId,
   value,
 }: {
+  formatValue?: (value: number) => string;
   label: string;
   max: number;
   min: number;
   onChange: (value: number) => void;
+  step?: number;
   testId: string;
   value: number;
 }) {
@@ -213,14 +380,14 @@ function ModelSlider({
     <label className="avatar-slider">
       <span className="avatar-slider-label">
         <span>{label}</span>
-        <strong>{value.toFixed(2)}</strong>
+        <strong>{formatValue(value)}</strong>
       </span>
       <input
         data-testid={testId}
         max={max}
         min={min}
         onChange={(event) => onChange(Number(event.target.value))}
-        step={0.01}
+        step={step}
         type="range"
         value={value}
       />
