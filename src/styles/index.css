@@ -215,6 +215,74 @@ button:disabled {
   max-width: min(16rem, calc(100vw - 8.5rem));
 }
 
+.scene-add-friend-plot {
+  display: grid;
+  min-width: 7.4rem;
+  cursor: pointer;
+  place-items: center;
+  gap: 0.2rem;
+  border: 2px solid #1f2933;
+  border-radius: 10px;
+  background: rgb(255 246 207 / 0.96);
+  color: #1f2933;
+  padding: 0.48rem 0.65rem;
+  font: 900 0.68rem/1 system-ui, sans-serif;
+  box-shadow: 0 5px 0 #1f2933;
+  white-space: nowrap;
+}
+
+.scene-add-friend-plot:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.scene-add-friend-plot span {
+  display: grid;
+  width: 1.35rem;
+  height: 1.35rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #4f7b58;
+  color: white;
+  font-size: 1rem;
+}
+
+.neighbor-panel-backdrop {
+  position: fixed;
+  z-index: 80;
+  display: grid;
+  padding: 1rem;
+  background: rgb(31 41 51 / 0.42);
+  inset: 0;
+  place-items: center;
+}
+
+.neighbor-panel-dialog {
+  position: relative;
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(42rem, calc(100dvh - 2rem));
+  overflow: auto;
+}
+
+.neighbor-panel-close {
+  position: absolute;
+  z-index: 2;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+  place-items: center;
+  border: 2px solid #1f2933;
+  border-radius: 999px;
+  background: white;
+  color: #1f2933;
+  font-size: 1.3rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .scene-plot-label {
   display: inline-flex;
   align-items: center;

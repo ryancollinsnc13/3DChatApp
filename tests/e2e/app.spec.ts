@@ -44,9 +44,21 @@ test("onboards into a focused full-screen neighborhood map", async ({ page }) =>
   await expect(page.getByTestId("map-screen")).toBeVisible();
   await expect(page.getByTestId("current-house-label")).toContainText("Your house");
   await expect(page.getByTestId("current-house-label")).toContainText("Ryan's Porch");
-  await expect(page.locator("[data-testid^='empty-plot-']")).toHaveCount(8);
+  await expect(page.locator("[data-testid^='empty-plot-']")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add friend house" })).toHaveCount(4);
+  await page
+    .getByRole("button", { name: "Add friend house" })
+    .nth(1)
+    .evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.getByTestId("neighbor-panel-backdrop")).toBeVisible();
+  await page.getByRole("button", { name: "Close add neighbor panel" }).click();
   await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "idle");
-  await page.getByTestId("empty-plot-5").click();
+  const canvas = page.locator("[data-testid='neighborhood-canvas'] canvas");
+  const canvasBounds = await canvas.boundingBox();
+  if (!canvasBounds) {
+    throw new Error("Neighborhood canvas is not visible");
+  }
+  await page.mouse.click(canvasBounds.x + canvasBounds.width * 0.72, canvasBounds.y + canvasBounds.height * 0.68);
   await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "walk");
   await expect(page.getByTestId("scene-character-p1")).toHaveAttribute("data-motion", "idle", { timeout: 4_000 });
   await expect(page.getByRole("link", { name: /Neighbourhood/i })).toBeVisible();

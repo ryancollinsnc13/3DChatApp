@@ -7,9 +7,11 @@ import {
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
 import {
   ACESFilmicToneMapping,
+  Box3,
   Color,
   MathUtils,
   Mesh,
@@ -20,6 +22,7 @@ import {
   Vector3,
 } from "three";
 import type { Group } from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { House, HousePreset, HouseSlot, Neighborhood } from "../../types/models";
 import { AvatarModel3D } from "../avatar/AvatarModel3D";
 
@@ -29,27 +32,31 @@ type NeighborhoodSceneProps = {
   activeRoomSlot: HouseSlot | null;
   invitedSlots: HouseSlot[];
   roomHouse: House | null;
+  onAddFriendHouse: () => void;
   onEnterHome: () => void;
   onExitRoom: () => void;
 };
 
 const homePlotPosition: [number, number, number] = [0, 0, 0];
-
-const emptyPlotPositions: Array<{ id: number; position: [number, number, number] }> = [
-  { id: 1, position: [-3.2, 0, -2.7] },
-  { id: 2, position: [0, 0, -2.7] },
-  { id: 3, position: [3.2, 0, -2.7] },
-  { id: 4, position: [-3.2, 0, 0] },
-  { id: 5, position: [3.2, 0, 0] },
-  { id: 6, position: [-3.2, 0, 2.7] },
-  { id: 7, position: [0, 0, 2.7] },
-  { id: 8, position: [3.2, 0, 2.7] },
+const friendPlotPositions: ScenePosition[] = [
+  [-6.1, 0, -0.85],
+  [6.1, 0, -0.85],
+  [-9.4, 0, -0.85],
+  [9.4, 0, -0.85],
 ];
 
 const modelPaths = {
   decorPlant: "/models/game/decor-plant.glb",
   furnitureKit: "/models/game/furniture-kit.glb",
   houseKit: "/models/game/house-kit.glb",
+  playerHouse: "/models/home/house_with_interior.glb",
+  natureBush: "/models/kenney-nature/plant_bushDetailed.glb",
+  natureFlower: "/models/kenney-nature/flower_redA.glb",
+  natureGrass: "/models/kenney-nature/grass.glb",
+  natureRock: "/models/kenney-nature/rock_smallA.glb",
+  natureSign: "/models/kenney-nature/sign.glb",
+  natureTree: "/models/kenney-nature/tree_default.glb",
+  natureTreeOak: "/models/kenney-nature/tree_oak.glb",
   roomShell: "/models/game/room-shell.glb",
   avocado: "/models/Avocado.glb",
   corset: "/models/Corset.glb",
@@ -66,7 +73,7 @@ type MovementBounds = {
   minZ: number;
 };
 
-const exteriorMovementBounds: MovementBounds = { maxX: 4.65, maxZ: 3.95, minX: -4.65, minZ: -3.95 };
+const exteriorMovementBounds: MovementBounds = { maxX: 10.6, maxZ: 4.65, minX: -10.6, minZ: -4.65 };
 const interiorMovementBounds: MovementBounds = { maxX: 1.7, maxZ: 1.45, minX: -1.7, minZ: -1.45 };
 const characterMoveSpeed = 2.45;
 const movementStopDistance = 0.035;
@@ -158,32 +165,31 @@ function RealModel({
   return <primitive object={scene} position={position} rotation={rotation} scale={scale} />;
 }
 
-function applyMaterialColor(root: Object3D, matcher: (name: string) => boolean, color: string) {
-  root.traverse((child) => {
-    if (!(child instanceof Mesh) || !matcher(child.name)) {
-      return;
-    }
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    materials.forEach((material) => {
-      if (material instanceof MeshStandardMaterial || material instanceof MeshPhysicalMaterial) {
-        material.color.set(color);
-        material.needsUpdate = true;
+function GameHouseModel({ scale = 1 }: { scale?: number }) {
+  const gltf = useGLTF(modelPaths.playerHouse);
+  const scene = useMemo(() => {
+    const normalizedScene = cloneAndTuneScene(gltf.scene);
+    const bounds = new Box3().setFromObject(normalizedScene);
+    const center = bounds.getCenter(new Vector3());
+    let exteriorGroundY = bounds.min.y;
+    normalizedScene.traverse((child) => {
+      if (!(child instanceof Mesh)) {
+        return;
+      }
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      if (materials.some((material) => material.name === "Vonok")) {
+        exteriorGroundY = new Box3().setFromObject(child).min.y;
       }
     });
-  });
-}
+    normalizedScene.position.set(-center.x, -exteriorGroundY, -center.z);
+    return normalizedScene;
+  }, [gltf.scene]);
 
-function GameHouseModel({ preset, scale = 1 }: { preset: HousePreset; scale?: number }) {
-  const gltf = useGLTF(modelPaths.houseKit);
-  const scene = useMemo(() => cloneAndTuneScene(gltf.scene), [gltf.scene]);
-
-  useEffect(() => {
-    applyMaterialColor(scene, (name) => name.includes("WALL"), preset.wallColor);
-    applyMaterialColor(scene, (name) => name.includes("ROOF"), preset.roofColor);
-    applyMaterialColor(scene, (name) => name.includes("TRIM") || name.includes("DOOR"), preset.trimColor);
-  }, [preset, scene]);
-
-  return <primitive object={scene} scale={scale} />;
+  return (
+    <group rotation={[0, -Math.PI / 2, 0]}>
+      <primitive object={scene} scale={scale} />
+    </group>
+  );
 }
 
 function GameKitModel({
@@ -236,17 +242,20 @@ function PremiumMaterial({
 function WalkingCharacter({
   slot,
   basePosition,
+  characterRef,
   movementBounds,
   scale = 0.88,
   targetPosition = null,
 }: {
   slot: HouseSlot;
   basePosition: ScenePosition;
+  characterRef?: RefObject<Group | null>;
   movementBounds?: MovementBounds;
   scale?: number;
   targetPosition?: ScenePosition | null;
 }) {
-  const groupRef = useRef<Group>(null);
+  const internalGroupRef = useRef<Group>(null);
+  const groupRef = characterRef ?? internalGroupRef;
   const targetRef = useRef<Vector3 | null>(null);
   const hasPlacedRef = useRef(false);
   const speedRef = useRef(0);
@@ -276,7 +285,7 @@ function WalkingCharacter({
     targetRef.current = new Vector3(nextTarget[0], nextTarget[1], nextTarget[2]);
     const distanceToTarget = Math.hypot(group.position.x - nextTarget[0], group.position.z - nextTarget[2]);
     setWalkingState(distanceToTarget > movementStopDistance);
-  }, [basePosition, movementBounds, setWalkingState, targetPosition]);
+  }, [basePosition, groupRef, movementBounds, setWalkingState, targetPosition]);
 
   useFrame(({ clock }, delta) => {
     if (!groupRef.current) {
@@ -343,87 +352,242 @@ function WalkingCharacter({
   );
 }
 
-function FocusHomeCamera() {
+function FollowCharacterCamera({
+  characterRef,
+  enableZoom,
+  maxDistance,
+  minDistance,
+  offset,
+  targetHeight,
+}: {
+  characterRef: RefObject<Group | null>;
+  enableZoom: boolean;
+  maxDistance: number;
+  minDistance: number;
+  offset: ScenePosition;
+  targetHeight: number;
+}) {
   const { camera } = useThree();
+  const vectorsRef = useRef({
+    characterPosition: new Vector3(),
+    lastTarget: new Vector3(),
+    movementDelta: new Vector3(),
+    orbitTarget: new Vector3(),
+    offset: new Vector3(...offset),
+  });
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+  const hasPositionedCamera = useRef(false);
 
-  useEffect(() => {
-    camera.position.set(0, 5.4, 6.4);
-    camera.lookAt(0, 0.3, 0);
-    camera.updateProjectionMatrix();
-  }, [camera]);
+  useFrame(() => {
+    const character = characterRef.current;
+    const controls = controlsRef.current;
+    if (!character || !controls) {
+      return;
+    }
 
-  return null;
-}
+    const { characterPosition, lastTarget, movementDelta, orbitTarget, offset: offsetVector } = vectorsRef.current;
+    character.getWorldPosition(characterPosition);
+    orbitTarget.copy(characterPosition);
+    orbitTarget.y += targetHeight;
 
-function PlotBase({ occupied = false }: { occupied?: boolean }) {
-  const baseColor = occupied ? "#fff6cf" : "#d8efe0";
+    if (!hasPositionedCamera.current) {
+      camera.position.copy(characterPosition).add(offsetVector);
+      hasPositionedCamera.current = true;
+    } else {
+      movementDelta.copy(orbitTarget).sub(lastTarget);
+      camera.position.add(movementDelta);
+    }
+
+    controls.target.copy(orbitTarget);
+    lastTarget.copy(orbitTarget);
+    controls.update();
+  });
 
   return (
-    <group>
-      <mesh position={[0, 0.035, 0]} receiveShadow>
-        <boxGeometry args={[2.35, 0.07, 1.95]} />
-        <PremiumMaterial clearcoat={0.26} color={baseColor} roughness={0.62} />
-      </mesh>
-      <mesh position={[0, 0.085, -0.98]} receiveShadow>
-        <boxGeometry args={[2.42, 0.04, 0.06]} />
-        <PremiumMaterial clearcoat={0.18} color="#f7e7c8" roughness={0.58} />
-      </mesh>
-      <mesh position={[0, 0.086, 0.98]} receiveShadow>
-        <boxGeometry args={[2.42, 0.04, 0.06]} />
-        <PremiumMaterial clearcoat={0.18} color="#f7e7c8" roughness={0.58} />
-      </mesh>
-      <mesh position={[-1.21, 0.087, 0]} receiveShadow>
-        <boxGeometry args={[0.06, 0.04, 2.02]} />
-        <PremiumMaterial clearcoat={0.18} color="#f7e7c8" roughness={0.58} />
-      </mesh>
-      <mesh position={[1.21, 0.087, 0]} receiveShadow>
-        <boxGeometry args={[0.06, 0.04, 2.02]} />
-        <PremiumMaterial clearcoat={0.18} color="#f7e7c8" roughness={0.58} />
-      </mesh>
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping
+      enablePan={false}
+      enableRotate
+      enableZoom={enableZoom}
+      makeDefault
+      maxDistance={maxDistance}
+      maxPolarAngle={Math.PI / 2.15}
+      minDistance={minDistance}
+      minPolarAngle={Math.PI / 4.4}
+    />
+  );
+}
+
+function NeighborhoodTree({ position, scale = 1 }: { position: ScenePosition; scale?: number }) {
+  return (
+    <group position={position}>
+      <RealModel name="natureTreeOak" position={[0, 0, 0]} scale={scale * 1.35} />
+      <RealModel name="natureGrass" position={[-0.35, 0, 0.22]} rotation={[0, 0.8, 0]} scale={scale * 0.8} />
+      <RealModel name="natureRock" position={[0.34, 0, 0.16]} rotation={[0, 1.7, 0]} scale={scale * 0.55} />
     </group>
   );
 }
 
-function EmptyPlot({
-  id,
-  onMoveToPlot,
-  position,
-}: {
-  id: number;
-  onMoveToPlot: (position: ScenePosition) => void;
-  position: ScenePosition;
-}) {
+function StreetLamp({ position }: { position: ScenePosition }) {
   return (
     <group position={position}>
-      <PlotBase />
-      <mesh position={[0, 0.18, 0]} castShadow>
-        <boxGeometry args={[0.74, 0.08, 0.34]} />
-        <PremiumMaterial clearcoat={0.22} color="#fffaf2" roughness={0.54} />
+      <mesh castShadow position={[0, 0.1, 0]}>
+        <cylinderGeometry args={[0.18, 0.24, 0.2, 16]} />
+        <PremiumMaterial color="#25363d" metalness={0.7} roughness={0.3} />
       </mesh>
-      <mesh position={[0, 0.42, 0]} castShadow>
-        <boxGeometry args={[0.08, 0.48, 0.08]} />
-        <PremiumMaterial clearcoat={0.18} color="#2f5d50" roughness={0.5} />
+      <mesh castShadow position={[0, 1.18, 0]}>
+        <cylinderGeometry args={[0.055, 0.08, 2.18, 12]} />
+        <PremiumMaterial color="#31474f" metalness={0.72} roughness={0.28} />
       </mesh>
-      <Html center distanceFactor={11} position={[0, 0.82, 0]}>
-        <button
-          className="scene-plot-label"
-          data-testid={`empty-plot-${id}`}
-          onClick={() => onMoveToPlot(position)}
-          type="button"
-        >
-          Empty plot
-        </button>
+      <mesh castShadow position={[0, 2.28, 0]}>
+        <cylinderGeometry args={[0.25, 0.14, 0.16, 12]} />
+        <PremiumMaterial color="#25363d" metalness={0.72} roughness={0.28} />
+      </mesh>
+      <mesh position={[0, 2.13, 0]}>
+        <sphereGeometry args={[0.18, 16, 16]} />
+        <meshPhysicalMaterial color="#fff1ae" emissive="#ffd86b" emissiveIntensity={2.1} roughness={0.18} />
+      </mesh>
+      <pointLight color="#ffd982" distance={5.5} intensity={1.15} position={[0, 2.08, 0]} />
+    </group>
+  );
+}
+
+function FlowerBed({ position, rotation = 0 }: { position: ScenePosition; rotation?: number }) {
+  const flowers = ["#ff7d8f", "#ffd166", "#a987d4", "#ff9f68"];
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <mesh receiveShadow position={[0, 0.06, 0]}>
+        <boxGeometry args={[1.65, 0.12, 0.42]} />
+        <PremiumMaterial color="#6b4c35" roughness={0.96} />
+      </mesh>
+      {flowers.map((color, index) => (
+        <group key={color} position={[-0.57 + index * 0.38, 0.18, index % 2 === 0 ? -0.04 : 0.06]}>
+          <mesh castShadow position={[0, 0.12, 0]}>
+            <cylinderGeometry args={[0.018, 0.022, 0.24, 6]} />
+            <meshStandardMaterial color="#397e4b" />
+          </mesh>
+          <mesh castShadow position={[0, 0.27, 0]}>
+            <sphereGeometry args={[0.09, 10, 10]} />
+            <meshStandardMaterial color={color} roughness={0.7} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function YardFence() {
+  const sidePosts = [-3.8, -2.85, -1.9, -0.95, 0, 0.95, 1.9, 2.85, 3.8];
+  return (
+    <group>
+      {sidePosts.map((x) => (
+        <mesh castShadow key={`back-${x}`} position={[x, 0.38, -4.38]}>
+          <boxGeometry args={[0.11, 0.72, 0.11]} />
+          <PremiumMaterial color="#f4e4c6" roughness={0.7} />
+        </mesh>
+      ))}
+      <mesh castShadow position={[0, 0.34, -4.38]}>
+        <boxGeometry args={[7.8, 0.1, 0.09]} />
+        <PremiumMaterial color="#ead5b2" roughness={0.72} />
+      </mesh>
+      <mesh castShadow position={[0, 0.63, -4.38]}>
+        <boxGeometry args={[7.8, 0.1, 0.09]} />
+        <PremiumMaterial color="#ead5b2" roughness={0.72} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <group key={side}>
+          <mesh castShadow position={[side * 5.72, 0.34, -1.15]}>
+            <boxGeometry args={[0.09, 0.1, 6.45]} />
+            <PremiumMaterial color="#ead5b2" roughness={0.72} />
+          </mesh>
+          <mesh castShadow position={[side * 5.72, 0.63, -1.15]}>
+            <boxGeometry args={[0.09, 0.1, 6.45]} />
+            <PremiumMaterial color="#ead5b2" roughness={0.72} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+function Mailbox({ displayName }: { displayName: string }) {
+  return (
+    <group position={[-1.75, 0, 2.15]} rotation={[0, 0.08, 0]}>
+      <mesh castShadow position={[0, 0.52, 0]}>
+        <cylinderGeometry args={[0.055, 0.07, 1.04, 10]} />
+        <PremiumMaterial color="#385d68" metalness={0.35} roughness={0.4} />
+      </mesh>
+      <mesh castShadow position={[0, 1.02, 0]}>
+        <boxGeometry args={[0.56, 0.34, 0.34]} />
+        <PremiumMaterial color="#4f7c87" metalness={0.28} roughness={0.38} />
+      </mesh>
+      <mesh castShadow position={[0.34, 1.13, 0]}>
+        <boxGeometry args={[0.08, 0.38, 0.04]} />
+        <PremiumMaterial color="#e85d5d" roughness={0.42} />
+      </mesh>
+      <Html center distanceFactor={9} position={[0, 1.42, 0]}>
+        <span className="scene-character-label">{displayName}'s home</span>
       </Html>
     </group>
   );
 }
 
+function FriendHousePlot({
+  onAddFriendHouse,
+  position,
+  slot,
+}: {
+  onAddFriendHouse: () => void;
+  position: ScenePosition;
+  slot?: HouseSlot;
+}) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.025, 0]} receiveShadow>
+        <boxGeometry args={[2.85, 0.05, 3.5]} />
+        <PremiumMaterial color={slot ? "#78b96f" : "#90c987"} roughness={0.92} />
+      </mesh>
+      <mesh position={[0, 0.055, 1.72]} receiveShadow>
+        <boxGeometry args={[2.95, 0.08, 0.12]} />
+        <PremiumMaterial color="#d8d3c8" roughness={0.78} />
+      </mesh>
+      {slot ? (
+        <>
+          <Suspense fallback={null}>
+            <RealModel name="houseKit" position={[0, 0.05, -0.25]} scale={1.22} />
+            <RealModel name="natureBush" position={[-0.88, 0, 0.65]} scale={0.7} />
+            <RealModel name="natureBush" position={[0.88, 0, 0.65]} rotation={[0, 1.2, 0]} scale={0.7} />
+          </Suspense>
+          <Html center distanceFactor={10} position={[0, 1.55, 0]}>
+            <span className="scene-character-label">{slot.displayName}'s house</span>
+          </Html>
+        </>
+      ) : (
+        <>
+          <Suspense fallback={null}>
+            <RealModel name="natureSign" position={[0, 0, 0]} scale={0.85} />
+          </Suspense>
+          <Html center distanceFactor={10} position={[0, 1.05, 0]}>
+            <button className="scene-add-friend-plot" onClick={onAddFriendHouse} type="button">
+              <span>+</span>
+              Add friend house
+            </button>
+          </Html>
+        </>
+      )}
+    </group>
+  );
+}
+
 function CurrentHousePlot({
+  characterRef,
   characterTarget,
   onEnterHome,
   preset,
   slot,
 }: {
+  characterRef: RefObject<Group | null>;
   characterTarget: ScenePosition | null;
   onEnterHome: () => void;
   preset: HousePreset;
@@ -431,18 +595,31 @@ function CurrentHousePlot({
 }) {
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
+    if (event.delta > 3) {
+      return;
+    }
     onEnterHome();
   };
 
   return (
-    <group position={homePlotPosition} onClick={handleClick}>
-      <PlotBase occupied />
+    <group position={homePlotPosition}>
+      <group onClick={handleClick}>
+        <Suspense fallback={null}>
+          <group position={[0, 0, -0.85]}>
+            <GameHouseModel scale={0.33} />
+          </group>
+        </Suspense>
+        <mesh castShadow position={[-0.72, 0.04, 0.68]} receiveShadow>
+          <boxGeometry args={[1.05, 0.08, 0.22]} />
+          <PremiumMaterial color={preset.trimColor} roughness={0.7} />
+        </mesh>
+        <pointLight color="#ffd982" distance={4} intensity={1.15} position={[-0.72, 1.15, 0.45]} />
+      </group>
       <Suspense fallback={null}>
-        <group position={[0, 0.08, 0]}>
-          <GameHouseModel preset={preset} scale={1.08} />
-        </group>
+        <RealModel name="natureBush" position={[-1.5, 0, 0.28]} scale={0.76} />
+        <RealModel name="natureBush" position={[1.5, 0, 0.28]} rotation={[0, 1.4, 0]} scale={0.76} />
       </Suspense>
-      <mesh position={[0.55, 1.12, 0.15]} castShadow>
+      <mesh position={[0.6, 1.48, 0.02]} castShadow>
         <sphereGeometry args={[0.13, 16, 16]} />
         <meshPhysicalMaterial
           clearcoat={1}
@@ -453,7 +630,8 @@ function CurrentHousePlot({
         />
       </mesh>
       <WalkingCharacter
-        basePosition={[0.72, 0.08, -0.54]}
+        basePosition={[0.86, 0, 0.92]}
+        characterRef={characterRef}
         movementBounds={exteriorMovementBounds}
         scale={0.45}
         slot={slot}
@@ -465,24 +643,31 @@ function CurrentHousePlot({
 
 function NeighborhoodExterior({
   exteriorPresets,
+  houseSlots,
   homeSlot,
+  onAddFriendHouse,
   onEnterHome,
 }: {
   exteriorPresets: HousePreset[];
+  houseSlots: HouseSlot[];
   homeSlot: HouseSlot;
+  onAddFriendHouse: () => void;
   onEnterHome: () => void;
 }) {
-  const orbitTarget = useMemo(() => new Vector3(homePlotPosition[0], 0.24, homePlotPosition[2]), []);
+  const characterRef = useRef<Group>(null);
   const [characterTarget, setCharacterTarget] = useState<ScenePosition | null>(null);
 
   const moveCharacterTo = useCallback((position: ScenePosition) => {
-    setCharacterTarget(constrainTarget(position, exteriorMovementBounds, 0.08));
+    setCharacterTarget(constrainTarget(position, exteriorMovementBounds, 0));
   }, []);
 
   const handleGroundClick = useCallback(
     (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
-      moveCharacterTo([event.point.x, 0.08, event.point.z]);
+      if (event.delta > 3) {
+        return;
+      }
+      moveCharacterTo([event.point.x, 0, event.point.z]);
     },
     [moveCharacterTo],
   );
@@ -491,7 +676,14 @@ function NeighborhoodExterior({
     <>
       <color attach="background" args={["#bde9ff"]} />
       <fog attach="fog" args={["#bde9ff", 14, 28]} />
-      <FocusHomeCamera />
+      <FollowCharacterCamera
+        characterRef={characterRef}
+        enableZoom
+        maxDistance={16}
+        minDistance={4.5}
+        offset={[-0.86, 5.8, 7.8]}
+        targetHeight={0.5}
+      />
       <ambientLight intensity={0.46} />
       <hemisphereLight color="#fff7d0" groundColor="#5fae7b" intensity={0.95} />
       <directionalLight
@@ -502,59 +694,67 @@ function NeighborhoodExterior({
         shadow-mapSize-height={2048}
         shadow-mapSize-width={2048}
       />
-      <pointLight color="#f2b84b" intensity={1.1} position={[-2.6, 2.2, 2.4]} />
       <group onClick={handleGroundClick}>
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[10.5, 9.2]} />
-          <PremiumMaterial clearcoat={0.2} color="#8bd3a7" roughness={0.74} />
+          <planeGeometry args={[23, 11]} />
+          <PremiumMaterial clearcoat={0.14} color="#78bc72" roughness={0.9} />
         </mesh>
-        <mesh position={[0, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[10.1, 0.34]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
+        <mesh position={[0, 0.045, 3.72]} receiveShadow>
+          <boxGeometry args={[23, 0.09, 2.35]} />
+          <PremiumMaterial clearcoat={0.12} color="#34434a" roughness={0.88} />
         </mesh>
-        <mesh position={[0, 0.019, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-          <planeGeometry args={[8.8, 0.34]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
+        <mesh position={[0, 0.105, 2.35]} receiveShadow>
+          <boxGeometry args={[23, 0.13, 0.58]} />
+          <PremiumMaterial clearcoat={0.22} color="#d8d3c8" roughness={0.76} />
         </mesh>
-        <mesh position={[0, 0.02, -1.35]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[10.1, 0.18]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
+        <mesh position={[0, 0.16, 2.68]} receiveShadow>
+          <boxGeometry args={[23, 0.16, 0.12]} />
+          <PremiumMaterial color="#b9b3a8" roughness={0.8} />
         </mesh>
-        <mesh position={[0, 0.021, 1.35]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[10.1, 0.18]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
+        {[-10.2, -8.2, -6.2, -4.2, -2.2, -0.2, 1.8, 3.8, 5.8, 7.8, 9.8].map((x) => (
+          <mesh key={x} position={[x, 0.105, 3.72]} receiveShadow>
+            <boxGeometry args={[1.05, 0.025, 0.08]} />
+            <meshStandardMaterial color="#f8e9a8" roughness={0.72} />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.1, 1.5]} receiveShadow>
+          <boxGeometry args={[0.72, 0.08, 1.45]} />
+          <PremiumMaterial color="#d8d3c8" roughness={0.78} />
         </mesh>
-        <mesh position={[-1.6, 0.022, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-          <planeGeometry args={[8.8, 0.18]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
+        <mesh position={[2.25, 0.085, 1.28]} receiveShadow>
+          <boxGeometry args={[1.62, 0.07, 2.82]} />
+          <PremiumMaterial color="#c7c3ba" roughness={0.82} />
         </mesh>
-        <mesh position={[1.6, 0.023, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-          <planeGeometry args={[8.8, 0.18]} />
-          <PremiumMaterial clearcoat={0.32} color="#fff6cf" roughness={0.5} />
-        </mesh>
-        {emptyPlotPositions.map((plot) => (
-          <EmptyPlot key={plot.id} id={plot.id} onMoveToPlot={moveCharacterTo} position={plot.position} />
+        <YardFence />
+        <Suspense fallback={null}>
+          <NeighborhoodTree position={[-4.15, 0, -3.05]} scale={1.08} />
+          <NeighborhoodTree position={[4.15, 0, -3.1]} scale={1.12} />
+        </Suspense>
+        <StreetLamp position={[-8.5, 0, 2.48]} />
+        <StreetLamp position={[-3.65, 0, 2.48]} />
+        <StreetLamp position={[3.85, 0, 2.48]} />
+        <StreetLamp position={[8.5, 0, 2.48]} />
+        <FlowerBed position={[-2.3, 0.02, 0.05]} rotation={0.08} />
+        <FlowerBed position={[2.35, 0.02, -0.15]} rotation={-0.08} />
+        <Mailbox displayName={homeSlot.displayName} />
+        {friendPlotPositions.map((position, index) => (
+          <FriendHousePlot
+            key={`${position[0]}-${position[2]}`}
+            onAddFriendHouse={onAddFriendHouse}
+            position={position}
+            slot={houseSlots[index]}
+          />
         ))}
       </group>
-      <Sparkles color="#ffffff" count={18} noise={0.7} opacity={0.34} scale={[9, 1.2, 8]} size={2} speed={0.16} />
+      <Sparkles color="#fff6c7" count={34} noise={0.75} opacity={0.28} scale={[20, 1.4, 8]} size={1.7} speed={0.14} />
       <CurrentHousePlot
+        characterRef={characterRef}
         characterTarget={characterTarget}
         onEnterHome={onEnterHome}
         preset={presetFor(homeSlot, exteriorPresets)}
         slot={homeSlot}
       />
-      <ContactShadows blur={3} opacity={0.34} position={[0, 0.01, 0]} scale={9} />
-      <OrbitControls
-        enableDamping
-        enablePan={false}
-        enableZoom
-        makeDefault
-        maxDistance={9}
-        maxPolarAngle={Math.PI / 2.18}
-        minDistance={4.2}
-        minPolarAngle={Math.PI / 4.4}
-        target={orbitTarget}
-      />
+      <ContactShadows blur={3} opacity={0.36} position={[0, 0.015, 0]} scale={20} />
     </>
   );
 }
@@ -570,6 +770,7 @@ function InteriorScene({
   roomHouse: House | null;
   onExitRoom: () => void;
 }) {
+  const characterRef = useRef<Group>(null);
   const guests = [roomSlot, ...invitedSlots.filter((slot) => slot.ownerPlayerId !== roomSlot.ownerPlayerId)];
   const guestPositions: Array<[number, number, number]> = [
     [-0.85, 0, 0.15],
@@ -586,6 +787,9 @@ function InteriorScene({
   const handleFloorClick = useCallback(
     (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
+      if (event.delta > 3) {
+        return;
+      }
       moveRoomCharacterTo([event.point.x, 0, event.point.z]);
     },
     [moveRoomCharacterTo],
@@ -595,6 +799,14 @@ function InteriorScene({
     <>
       <color attach="background" args={["#fff6cf"]} />
       <fog attach="fog" args={["#fff6cf", 14, 20]} />
+      <FollowCharacterCamera
+        characterRef={characterRef}
+        enableZoom={false}
+        maxDistance={5.2}
+        minDistance={3.2}
+        offset={[0.85, 3.1, 4.25]}
+        targetHeight={0.72}
+      />
       <ambientLight intensity={0.48} />
       <hemisphereLight color="#fff7d0" groundColor="#ffe1aa" intensity={1.05} />
       <directionalLight
@@ -622,6 +834,7 @@ function InteriorScene({
       {guests.map((slot, index) => (
         <WalkingCharacter
           basePosition={guestPositions[index] ?? [0, 0, 0]}
+          characterRef={index === 0 ? characterRef : undefined}
           key={slot.ownerPlayerId}
           movementBounds={interiorMovementBounds}
           scale={0.82}
@@ -638,7 +851,6 @@ function InteriorScene({
         </div>
       </Html>
       <ContactShadows blur={3} opacity={0.32} position={[0, 0.01, 0]} scale={4.4} />
-      <OrbitControls enablePan={false} enableZoom={false} maxPolarAngle={Math.PI / 2.15} minPolarAngle={Math.PI / 3.1} />
     </>
   );
 }
@@ -649,6 +861,7 @@ export function NeighborhoodScene({
   activeRoomSlot,
   invitedSlots,
   roomHouse,
+  onAddFriendHouse,
   onEnterHome,
   onExitRoom,
 }: NeighborhoodSceneProps) {
@@ -678,7 +891,9 @@ export function NeighborhoodScene({
         ) : (
           <NeighborhoodExterior
             exteriorPresets={exteriorPresets}
+            houseSlots={neighborhood.houseSlots}
             homeSlot={neighborhood.homeSlot}
+            onAddFriendHouse={onAddFriendHouse}
             onEnterHome={onEnterHome}
           />
         )}
