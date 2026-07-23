@@ -3,6 +3,7 @@ import {
   Html,
   OrbitControls,
   Sparkles,
+  useFBX,
   useGLTF,
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -18,17 +19,17 @@ import {
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
+  PCFSoftShadowMap,
   SRGBColorSpace,
   Vector3,
 } from "three";
 import type { Group } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import type { House, HousePreset, HouseSlot, Neighborhood } from "../../types/models";
+import type { House, HouseSlot, Neighborhood } from "../../types/models";
 import { AvatarModel3D } from "../avatar/AvatarModel3D";
 
 type NeighborhoodSceneProps = {
   neighborhood: Neighborhood;
-  exteriorPresets: HousePreset[];
   activeRoomSlot: HouseSlot | null;
   invitedSlots: HouseSlot[];
   roomHouse: House | null;
@@ -37,33 +38,42 @@ type NeighborhoodSceneProps = {
   onExitRoom: () => void;
 };
 
-const homePlotPosition: [number, number, number] = [0, 0, 0];
-const friendPlotPositions: ScenePosition[] = [
-  [-6.1, 0, -0.85],
-  [6.1, 0, -0.85],
-  [-9.4, 0, -0.85],
-  [9.4, 0, -0.85],
-];
-
 const modelPaths = {
   decorPlant: "/models/game/decor-plant.glb",
   furnitureKit: "/models/game/furniture-kit.glb",
-  houseKit: "/models/game/house-kit.glb",
-  playerHouse: "/models/home/house_with_interior.glb",
-  natureBush: "/models/kenney-nature/plant_bushDetailed.glb",
-  natureFlower: "/models/kenney-nature/flower_redA.glb",
-  natureGrass: "/models/kenney-nature/grass.glb",
-  natureRock: "/models/kenney-nature/rock_smallA.glb",
-  natureSign: "/models/kenney-nature/sign.glb",
-  natureTree: "/models/kenney-nature/tree_default.glb",
-  natureTreeOak: "/models/kenney-nature/tree_oak.glb",
+  townCart: "/models/kenney-fantasy-town/Models/GLB%20format/cart.glb",
+  townFence: "/models/kenney-fantasy-town/Models/GLB%20format/fence.glb",
+  townFountain: "/models/kenney-fantasy-town/Models/GLB%20format/fountain-round-detail.glb",
+  townLantern: "/models/kenney-fantasy-town/Models/GLB%20format/lantern.glb",
+  townStallGreen: "/models/kenney-fantasy-town/Models/GLB%20format/stall-green.glb",
+  townStallRed: "/models/kenney-fantasy-town/Models/GLB%20format/stall-red.glb",
+  townTree: "/models/kenney-fantasy-town/Models/GLB%20format/tree-high-round.glb",
+  townTower: "/models/kenney-retro-fantasy/Models/GLB%20format/tower.glb",
+  townWallGate: "/models/kenney-retro-fantasy/Models/GLB%20format/wall-fortified-gate.glb",
+  natureGround: "/models/kenney-nature-kit/Models/GLTF%20format/ground_grass.glb",
+  naturePathCross: "/models/kenney-nature-kit/Models/GLTF%20format/ground_pathCross.glb",
+  naturePathStraight: "/models/kenney-nature-kit/Models/GLTF%20format/ground_pathStraight.glb",
+  naturePathTile: "/models/kenney-nature-kit/Models/GLTF%20format/ground_pathTile.glb",
   roomShell: "/models/game/room-shell.glb",
   avocado: "/models/Avocado.glb",
   corset: "/models/Corset.glb",
-  toyCar: "/models/ToyCar.glb",
 };
 
+const medievalBuildingPaths = {
+  blacksmith:
+    "/models/quaternius-medieval-village/Medieval%20Village%20Pack%20-%20Dec%202020/Buildings/FBX/Blacksmith.fbx",
+  house1:
+    "/models/quaternius-medieval-village/Medieval%20Village%20Pack%20-%20Dec%202020/Buildings/FBX/House_1.fbx",
+  house2:
+    "/models/quaternius-medieval-village/Medieval%20Village%20Pack%20-%20Dec%202020/Buildings/FBX/House_2.fbx",
+  house3:
+    "/models/quaternius-medieval-village/Medieval%20Village%20Pack%20-%20Dec%202020/Buildings/FBX/House_3.fbx",
+  house4:
+    "/models/quaternius-medieval-village/Medieval%20Village%20Pack%20-%20Dec%202020/Buildings/FBX/House_4.fbx",
+} as const;
+
 type ModelName = keyof typeof modelPaths;
+type MedievalBuildingName = keyof typeof medievalBuildingPaths;
 type ScenePosition = [number, number, number];
 
 type MovementBounds = {
@@ -93,20 +103,6 @@ function shortestAngleDelta(from: number, to: number) {
 
 function dampAngle(from: number, to: number, lambda: number, delta: number) {
   return from + shortestAngleDelta(from, to) * (1 - Math.exp(-lambda * delta));
-}
-
-function presetFor(slot: HouseSlot, presets: HousePreset[]) {
-  return presets.find((preset) => preset.presetId === slot.exteriorPreset) ?? presets[0];
-}
-
-function presenceColor(presence: HouseSlot["presence"]) {
-  if (presence === "online") {
-    return "#3aa56d";
-  }
-  if (presence === "away") {
-    return "#f2b84b";
-  }
-  return "#8b96a3";
 }
 
 function tuneModelMaterials(root: Object3D) {
@@ -165,31 +161,30 @@ function RealModel({
   return <primitive object={scene} position={position} rotation={rotation} scale={scale} />;
 }
 
-function GameHouseModel({ scale = 1 }: { scale?: number }) {
-  const gltf = useGLTF(modelPaths.playerHouse);
+function MedievalBuilding({
+  name,
+  position,
+  rotation = 0,
+  targetHeight = 2.65,
+}: {
+  name: MedievalBuildingName;
+  position: ScenePosition;
+  rotation?: number;
+  targetHeight?: number;
+}) {
+  const fbx = useFBX(medievalBuildingPaths[name]);
   const scene = useMemo(() => {
-    const normalizedScene = cloneAndTuneScene(gltf.scene);
+    const normalizedScene = cloneAndTuneScene(fbx);
     const bounds = new Box3().setFromObject(normalizedScene);
-    const center = bounds.getCenter(new Vector3());
-    let exteriorGroundY = bounds.min.y;
-    normalizedScene.traverse((child) => {
-      if (!(child instanceof Mesh)) {
-        return;
-      }
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      if (materials.some((material) => material.name === "Vonok")) {
-        exteriorGroundY = new Box3().setFromObject(child).min.y;
-      }
-    });
-    normalizedScene.position.set(-center.x, -exteriorGroundY, -center.z);
+    const size = bounds.getSize(new Vector3());
+    normalizedScene.scale.setScalar(targetHeight / size.y);
+    const scaledBounds = new Box3().setFromObject(normalizedScene);
+    const center = scaledBounds.getCenter(new Vector3());
+    normalizedScene.position.set(-center.x, -scaledBounds.min.y, -center.z);
     return normalizedScene;
-  }, [gltf.scene]);
+  }, [fbx, targetHeight]);
 
-  return (
-    <group rotation={[0, -Math.PI / 2, 0]}>
-      <primitive object={scene} scale={scale} />
-    </group>
-  );
+  return <primitive object={scene} position={position} rotation={[0, rotation, 0]} />;
 }
 
 function GameKitModel({
@@ -419,236 +414,148 @@ function FollowCharacterCamera({
   );
 }
 
-function NeighborhoodTree({ position, scale = 1 }: { position: ScenePosition; scale?: number }) {
-  return (
-    <group position={position}>
-      <RealModel name="natureTreeOak" position={[0, 0, 0]} scale={scale * 1.35} />
-      <RealModel name="natureGrass" position={[-0.35, 0, 0.22]} rotation={[0, 0.8, 0]} scale={scale * 0.8} />
-      <RealModel name="natureRock" position={[0.34, 0, 0.16]} rotation={[0, 1.7, 0]} scale={scale * 0.55} />
-    </group>
-  );
-}
+const housePlotPositions: ScenePosition[] = [
+  [-4.8, 0, -2.25],
+  [4.8, 0, -2.25],
+  [-4.8, 0, 2.35],
+  [4.8, 0, 2.35],
+];
 
-function StreetLamp({ position }: { position: ScenePosition }) {
-  return (
-    <group position={position}>
-      <mesh castShadow position={[0, 0.1, 0]}>
-        <cylinderGeometry args={[0.18, 0.24, 0.2, 16]} />
-        <PremiumMaterial color="#25363d" metalness={0.7} roughness={0.3} />
-      </mesh>
-      <mesh castShadow position={[0, 1.18, 0]}>
-        <cylinderGeometry args={[0.055, 0.08, 2.18, 12]} />
-        <PremiumMaterial color="#31474f" metalness={0.72} roughness={0.28} />
-      </mesh>
-      <mesh castShadow position={[0, 2.28, 0]}>
-        <cylinderGeometry args={[0.25, 0.14, 0.16, 12]} />
-        <PremiumMaterial color="#25363d" metalness={0.72} roughness={0.28} />
-      </mesh>
-      <mesh position={[0, 2.13, 0]}>
-        <sphereGeometry args={[0.18, 16, 16]} />
-        <meshPhysicalMaterial color="#fff1ae" emissive="#ffd86b" emissiveIntensity={2.1} roughness={0.18} />
-      </mesh>
-      <pointLight color="#ffd982" distance={5.5} intensity={1.15} position={[0, 2.08, 0]} />
-    </group>
-  );
-}
+const houseModels: MedievalBuildingName[] = ["house2", "house3", "house4", "blacksmith"];
 
-function FlowerBed({ position, rotation = 0 }: { position: ScenePosition; rotation?: number }) {
-  const flowers = ["#ff7d8f", "#ffd166", "#a987d4", "#ff9f68"];
-  return (
-    <group position={position} rotation={[0, rotation, 0]}>
-      <mesh receiveShadow position={[0, 0.06, 0]}>
-        <boxGeometry args={[1.65, 0.12, 0.42]} />
-        <PremiumMaterial color="#6b4c35" roughness={0.96} />
-      </mesh>
-      {flowers.map((color, index) => (
-        <group key={color} position={[-0.57 + index * 0.38, 0.18, index % 2 === 0 ? -0.04 : 0.06]}>
-          <mesh castShadow position={[0, 0.12, 0]}>
-            <cylinderGeometry args={[0.018, 0.022, 0.24, 6]} />
-            <meshStandardMaterial color="#397e4b" />
-          </mesh>
-          <mesh castShadow position={[0, 0.27, 0]}>
-            <sphereGeometry args={[0.09, 10, 10]} />
-            <meshStandardMaterial color={color} roughness={0.7} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
+function TownGround() {
+  const tilePositions: ScenePosition[] = [];
+  for (let x = -10; x <= 10; x += 1) {
+    for (let z = -4; z <= 4; z += 1) {
+      tilePositions.push([x, -0.03, z]);
+    }
+  }
 
-function YardFence() {
-  const sidePosts = [-3.8, -2.85, -1.9, -0.95, 0, 0.95, 1.9, 2.85, 3.8];
   return (
     <group>
-      {sidePosts.map((x) => (
-        <mesh castShadow key={`back-${x}`} position={[x, 0.38, -4.38]}>
-          <boxGeometry args={[0.11, 0.72, 0.11]} />
-          <PremiumMaterial color="#f4e4c6" roughness={0.7} />
-        </mesh>
-      ))}
-      <mesh castShadow position={[0, 0.34, -4.38]}>
-        <boxGeometry args={[7.8, 0.1, 0.09]} />
-        <PremiumMaterial color="#ead5b2" roughness={0.72} />
-      </mesh>
-      <mesh castShadow position={[0, 0.63, -4.38]}>
-        <boxGeometry args={[7.8, 0.1, 0.09]} />
-        <PremiumMaterial color="#ead5b2" roughness={0.72} />
-      </mesh>
-      {[-1, 1].map((side) => (
-        <group key={side}>
-          <mesh castShadow position={[side * 5.72, 0.34, -1.15]}>
-            <boxGeometry args={[0.09, 0.1, 6.45]} />
-            <PremiumMaterial color="#ead5b2" roughness={0.72} />
-          </mesh>
-          <mesh castShadow position={[side * 5.72, 0.63, -1.15]}>
-            <boxGeometry args={[0.09, 0.1, 6.45]} />
-            <PremiumMaterial color="#ead5b2" roughness={0.72} />
-          </mesh>
-        </group>
-      ))}
+      {tilePositions.map((position) => {
+        const x = position[0];
+        const z = position[2];
+        const isVerticalPath = x === -6 || x === 0 || x === 6;
+        const isHorizontalPath = z === 0;
+        const isPlaza = Math.abs(x) <= 1 && z >= 1 && z <= 3;
+        const name: ModelName =
+          isPlaza
+            ? "naturePathTile"
+            : isVerticalPath && isHorizontalPath
+              ? "naturePathCross"
+              : isVerticalPath || isHorizontalPath
+                ? "naturePathStraight"
+                : "natureGround";
+        const rotation: [number, number, number] =
+          isHorizontalPath && !isVerticalPath ? [0, Math.PI / 2, 0] : [0, 0, 0];
+        return (
+          <RealModel
+            key={`${x}-${z}`}
+            name={name}
+            position={position}
+            rotation={rotation}
+            scale={1.01}
+          />
+        );
+      })}
     </group>
   );
 }
 
-function Mailbox({ displayName }: { displayName: string }) {
-  return (
-    <group position={[-1.75, 0, 2.15]} rotation={[0, 0.08, 0]}>
-      <mesh castShadow position={[0, 0.52, 0]}>
-        <cylinderGeometry args={[0.055, 0.07, 1.04, 10]} />
-        <PremiumMaterial color="#385d68" metalness={0.35} roughness={0.4} />
-      </mesh>
-      <mesh castShadow position={[0, 1.02, 0]}>
-        <boxGeometry args={[0.56, 0.34, 0.34]} />
-        <PremiumMaterial color="#4f7c87" metalness={0.28} roughness={0.38} />
-      </mesh>
-      <mesh castShadow position={[0.34, 1.13, 0]}>
-        <boxGeometry args={[0.08, 0.38, 0.04]} />
-        <PremiumMaterial color="#e85d5d" roughness={0.42} />
-      </mesh>
-      <Html center distanceFactor={9} position={[0, 1.42, 0]}>
-        <span className="scene-character-label">{displayName}'s home</span>
-      </Html>
-    </group>
-  );
-}
-
-function FriendHousePlot({
-  onAddFriendHouse,
+function TownHousePlot({
+  index,
+  isHome = false,
+  onAddHouse,
+  onEnterHome,
   position,
   slot,
 }: {
-  onAddFriendHouse: () => void;
+  index: number;
+  isHome?: boolean;
+  onAddHouse: () => void;
+  onEnterHome: () => void;
   position: ScenePosition;
   slot?: HouseSlot;
 }) {
+  const handleHouseClick = (event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    if (isHome && event.delta <= 3) {
+      onEnterHome();
+    }
+  };
+
   return (
     <group position={position}>
-      <mesh position={[0, 0.025, 0]} receiveShadow>
-        <boxGeometry args={[2.85, 0.05, 3.5]} />
-        <PremiumMaterial color={slot ? "#78b96f" : "#90c987"} roughness={0.92} />
-      </mesh>
-      <mesh position={[0, 0.055, 1.72]} receiveShadow>
-        <boxGeometry args={[2.95, 0.08, 0.12]} />
-        <PremiumMaterial color="#d8d3c8" roughness={0.78} />
-      </mesh>
       {slot ? (
-        <>
-          <Suspense fallback={null}>
-            <RealModel name="houseKit" position={[0, 0.05, -0.25]} scale={1.22} />
-            <RealModel name="natureBush" position={[-0.88, 0, 0.65]} scale={0.7} />
-            <RealModel name="natureBush" position={[0.88, 0, 0.65]} rotation={[0, 1.2, 0]} scale={0.7} />
-          </Suspense>
-          <Html center distanceFactor={10} position={[0, 1.55, 0]}>
-            <span className="scene-character-label">{slot.displayName}'s house</span>
+        <group onClick={handleHouseClick}>
+          <MedievalBuilding
+            name={isHome ? "house1" : houseModels[index % houseModels.length]}
+            position={[0, 0, 0]}
+            rotation={index % 2 === 0 ? 0.08 : -0.08}
+            targetHeight={isHome ? 3 : 2.7}
+          />
+          <Html center distanceFactor={10} position={[0, 3.15, 0]}>
+            <span className="scene-character-label">
+              {isHome ? `${slot.displayName}'s house` : slot.displayName}
+            </span>
           </Html>
-        </>
+        </group>
       ) : (
-        <>
-          <Suspense fallback={null}>
-            <RealModel name="natureSign" position={[0, 0, 0]} scale={0.85} />
-          </Suspense>
-          <Html center distanceFactor={10} position={[0, 1.05, 0]}>
-            <button className="scene-add-friend-plot" onClick={onAddFriendHouse} type="button">
-              <span>+</span>
-              Add friend house
-            </button>
-          </Html>
-        </>
+        <Html center distanceFactor={10} position={[0, 0.48, 0]}>
+          <button
+            aria-label="Add friend house"
+            className="scene-add-friend-plot"
+            onClick={onAddHouse}
+            type="button"
+          >
+            <span>+</span>
+            Place house
+          </button>
+        </Html>
       )}
     </group>
   );
 }
 
-function CurrentHousePlot({
-  characterRef,
-  characterTarget,
-  onEnterHome,
-  preset,
-  slot,
-}: {
-  characterRef: RefObject<Group | null>;
-  characterTarget: ScenePosition | null;
-  onEnterHome: () => void;
-  preset: HousePreset;
-  slot: HouseSlot;
-}) {
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation();
-    if (event.delta > 3) {
-      return;
-    }
-    onEnterHome();
-  };
+function TownDecor() {
+  const trees: Array<{ position: ScenePosition; scale: number }> = [
+    { position: [-9.1, 0, -3.3], scale: 1.25 },
+    { position: [-8.4, 0, 3.45], scale: 1.05 },
+    { position: [8.7, 0, -3.4], scale: 1.15 },
+    { position: [9.2, 0, 3.2], scale: 1.3 },
+    { position: [-2.8, 0, 3.55], scale: 0.82 },
+    { position: [2.9, 0, 3.55], scale: 0.86 },
+  ];
+  const fenceXs = [-7.2, -4.8, -2.4, 2.4, 4.8, 7.2];
 
   return (
-    <group position={homePlotPosition}>
-      <group onClick={handleClick}>
-        <Suspense fallback={null}>
-          <group position={[0, 0, -0.85]}>
-            <GameHouseModel scale={0.33} />
-          </group>
-        </Suspense>
-        <mesh castShadow position={[-0.72, 0.04, 0.68]} receiveShadow>
-          <boxGeometry args={[1.05, 0.08, 0.22]} />
-          <PremiumMaterial color={preset.trimColor} roughness={0.7} />
-        </mesh>
-        <pointLight color="#ffd982" distance={4} intensity={1.15} position={[-0.72, 1.15, 0.45]} />
-      </group>
-      <Suspense fallback={null}>
-        <RealModel name="natureBush" position={[-1.5, 0, 0.28]} scale={0.76} />
-        <RealModel name="natureBush" position={[1.5, 0, 0.28]} rotation={[0, 1.4, 0]} scale={0.76} />
-      </Suspense>
-      <mesh position={[0.6, 1.48, 0.02]} castShadow>
-        <sphereGeometry args={[0.13, 16, 16]} />
-        <meshPhysicalMaterial
-          clearcoat={1}
-          color={presenceColor(slot.presence)}
-          emissive={presenceColor(slot.presence)}
-          emissiveIntensity={0.42}
-          roughness={0.2}
-        />
-      </mesh>
-      <WalkingCharacter
-        basePosition={[0.86, 0, 0.92]}
-        characterRef={characterRef}
-        movementBounds={exteriorMovementBounds}
-        scale={0.45}
-        slot={slot}
-        targetPosition={characterTarget}
-      />
+    <group>
+      {trees.map(({ position, scale }) => (
+        <RealModel key={`tree-${position[0]}-${position[2]}`} name="townTree" position={position} scale={scale} />
+      ))}
+      {fenceXs.map((x) => (
+        <RealModel key={`fence-${x}`} name="townFence" position={[x, 0, -4.35]} scale={1.2} />
+      ))}
+      <RealModel name="townFountain" position={[0, 0, 2.55]} scale={1.45} />
+      <RealModel name="townStallRed" position={[-2.6, 0, -3.05]} rotation={[0, 0.18, 0]} scale={1.05} />
+      <RealModel name="townStallGreen" position={[2.65, 0, -3.05]} rotation={[0, -0.18, 0]} scale={1.05} />
+      <RealModel name="townCart" position={[7.9, 0, 0]} rotation={[0, -Math.PI / 2, 0]} scale={0.9} />
+      <RealModel name="townLantern" position={[-1.35, 0, 0.15]} scale={1.2} />
+      <RealModel name="townLantern" position={[1.35, 0, 0.15]} scale={1.2} />
+      <RealModel name="townTower" position={[-9.1, 0, 0]} scale={1.35} />
+      <RealModel name="townTower" position={[9.1, 0, 0]} scale={1.35} />
+      <RealModel name="townWallGate" position={[0, 0, -4.2]} scale={1.15} />
     </group>
   );
 }
 
 function NeighborhoodExterior({
-  exteriorPresets,
   houseSlots,
   homeSlot,
   onAddFriendHouse,
   onEnterHome,
 }: {
-  exteriorPresets: HousePreset[];
   houseSlots: HouseSlot[];
   homeSlot: HouseSlot;
   onAddFriendHouse: () => void;
@@ -657,104 +564,71 @@ function NeighborhoodExterior({
   const characterRef = useRef<Group>(null);
   const [characterTarget, setCharacterTarget] = useState<ScenePosition | null>(null);
 
-  const moveCharacterTo = useCallback((position: ScenePosition) => {
-    setCharacterTarget(constrainTarget(position, exteriorMovementBounds, 0));
+  const handleGroundClick = useCallback((event: ThreeEvent<MouseEvent>) => {
+    event.stopPropagation();
+    if (event.delta > 3) {
+      return;
+    }
+    setCharacterTarget(constrainTarget([event.point.x, 0, event.point.z], exteriorMovementBounds, 0));
   }, []);
-
-  const handleGroundClick = useCallback(
-    (event: ThreeEvent<MouseEvent>) => {
-      event.stopPropagation();
-      if (event.delta > 3) {
-        return;
-      }
-      moveCharacterTo([event.point.x, 0, event.point.z]);
-    },
-    [moveCharacterTo],
-  );
 
   return (
     <>
-      <color attach="background" args={["#bde9ff"]} />
-      <fog attach="fog" args={["#bde9ff", 14, 28]} />
+      <color attach="background" args={["#b9d8df"]} />
+      <fog attach="fog" args={["#b9d8df", 18, 34]} />
       <FollowCharacterCamera
         characterRef={characterRef}
         enableZoom
-        maxDistance={16}
+        maxDistance={18}
         minDistance={4.5}
-        offset={[-0.86, 5.8, 7.8]}
-        targetHeight={0.5}
+        offset={[0, 6.7, 8.8]}
+        targetHeight={0.55}
       />
-      <ambientLight intensity={0.46} />
-      <hemisphereLight color="#fff7d0" groundColor="#5fae7b" intensity={0.95} />
+      <ambientLight intensity={0.72} />
+      <hemisphereLight color="#fff1cf" groundColor="#66705a" intensity={1.2} />
       <directionalLight
         castShadow
-        intensity={1.65}
-        position={[4, 7, 4]}
+        color="#ffe3b0"
+        intensity={1.35}
+        position={[6, 10, 7]}
         shadow-bias={-0.0002}
         shadow-mapSize-height={2048}
         shadow-mapSize-width={2048}
       />
-      <group onClick={handleGroundClick}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[23, 11]} />
-          <PremiumMaterial clearcoat={0.14} color="#78bc72" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, 0.045, 3.72]} receiveShadow>
-          <boxGeometry args={[23, 0.09, 2.35]} />
-          <PremiumMaterial clearcoat={0.12} color="#34434a" roughness={0.88} />
-        </mesh>
-        <mesh position={[0, 0.105, 2.35]} receiveShadow>
-          <boxGeometry args={[23, 0.13, 0.58]} />
-          <PremiumMaterial clearcoat={0.22} color="#d8d3c8" roughness={0.76} />
-        </mesh>
-        <mesh position={[0, 0.16, 2.68]} receiveShadow>
-          <boxGeometry args={[23, 0.16, 0.12]} />
-          <PremiumMaterial color="#b9b3a8" roughness={0.8} />
-        </mesh>
-        {[-10.2, -8.2, -6.2, -4.2, -2.2, -0.2, 1.8, 3.8, 5.8, 7.8, 9.8].map((x) => (
-          <mesh key={x} position={[x, 0.105, 3.72]} receiveShadow>
-            <boxGeometry args={[1.05, 0.025, 0.08]} />
-            <meshStandardMaterial color="#f8e9a8" roughness={0.72} />
-          </mesh>
-        ))}
-        <mesh position={[0, 0.1, 1.5]} receiveShadow>
-          <boxGeometry args={[0.72, 0.08, 1.45]} />
-          <PremiumMaterial color="#d8d3c8" roughness={0.78} />
-        </mesh>
-        <mesh position={[2.25, 0.085, 1.28]} receiveShadow>
-          <boxGeometry args={[1.62, 0.07, 2.82]} />
-          <PremiumMaterial color="#c7c3ba" roughness={0.82} />
-        </mesh>
-        <YardFence />
-        <Suspense fallback={null}>
-          <NeighborhoodTree position={[-4.15, 0, -3.05]} scale={1.08} />
-          <NeighborhoodTree position={[4.15, 0, -3.1]} scale={1.12} />
-        </Suspense>
-        <StreetLamp position={[-8.5, 0, 2.48]} />
-        <StreetLamp position={[-3.65, 0, 2.48]} />
-        <StreetLamp position={[3.85, 0, 2.48]} />
-        <StreetLamp position={[8.5, 0, 2.48]} />
-        <FlowerBed position={[-2.3, 0.02, 0.05]} rotation={0.08} />
-        <FlowerBed position={[2.35, 0.02, -0.15]} rotation={-0.08} />
-        <Mailbox displayName={homeSlot.displayName} />
-        {friendPlotPositions.map((position, index) => (
-          <FriendHousePlot
+      <directionalLight color="#d9edff" intensity={0.5} position={[-6, 7, -5]} />
+      <Suspense fallback={null}>
+        <group onClick={handleGroundClick}>
+          <TownGround />
+        </group>
+        <TownDecor />
+        <TownHousePlot
+          index={0}
+          isHome
+          onAddHouse={onAddFriendHouse}
+          onEnterHome={onEnterHome}
+          position={[0, 0, -1.65]}
+          slot={homeSlot}
+        />
+        {housePlotPositions.map((position, index) => (
+          <TownHousePlot
+            index={index}
             key={`${position[0]}-${position[2]}`}
-            onAddFriendHouse={onAddFriendHouse}
+            onAddHouse={onAddFriendHouse}
+            onEnterHome={onEnterHome}
             position={position}
             slot={houseSlots[index]}
           />
         ))}
-      </group>
-      <Sparkles color="#fff6c7" count={34} noise={0.75} opacity={0.28} scale={[20, 1.4, 8]} size={1.7} speed={0.14} />
-      <CurrentHousePlot
+      </Suspense>
+      <WalkingCharacter
+        basePosition={[0, 0, 0.65]}
         characterRef={characterRef}
-        characterTarget={characterTarget}
-        onEnterHome={onEnterHome}
-        preset={presetFor(homeSlot, exteriorPresets)}
+        movementBounds={exteriorMovementBounds}
+        scale={0.45}
         slot={homeSlot}
+        targetPosition={characterTarget}
       />
-      <ContactShadows blur={3} opacity={0.36} position={[0, 0.015, 0]} scale={20} />
+      <ContactShadows blur={2.8} color="#473a2b" opacity={0.34} position={[0, 0.01, 0]} scale={22} />
     </>
   );
 }
@@ -857,7 +731,6 @@ function InteriorScene({
 
 export function NeighborhoodScene({
   neighborhood,
-  exteriorPresets,
   activeRoomSlot,
   invitedSlots,
   roomHouse,
@@ -878,6 +751,7 @@ export function NeighborhoodScene({
           gl.toneMappingExposure = activeRoomSlot ? 1.12 : 1.05;
           gl.outputColorSpace = SRGBColorSpace;
           gl.shadowMap.enabled = true;
+          gl.shadowMap.type = PCFSoftShadowMap;
         }}
         shadows
       >
@@ -890,7 +764,6 @@ export function NeighborhoodScene({
           />
         ) : (
           <NeighborhoodExterior
-            exteriorPresets={exteriorPresets}
             houseSlots={neighborhood.houseSlots}
             homeSlot={neighborhood.homeSlot}
             onAddFriendHouse={onAddFriendHouse}

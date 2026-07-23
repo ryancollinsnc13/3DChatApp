@@ -6,7 +6,6 @@ import { useSessionStore } from "../../state/useSessionStore";
 
 export function HomeScreen() {
   const house = useSessionStore((state) => state.house);
-  const exteriorPresets = useSessionStore((state) => state.exteriorPresets);
   const neighborhood = useNeighborhoodStore((state) => state.neighborhood);
   const [isAddingNeighbor, setIsAddingNeighbor] = useState(false);
   const [isInsideHouse, setIsInsideHouse] = useState(false);
@@ -49,7 +48,6 @@ export function HomeScreen() {
       ) : null}
       <NeighborhoodScene
         activeRoomSlot={isInsideHouse ? neighborhood.homeSlot : null}
-        exteriorPresets={exteriorPresets}
         invitedSlots={[]}
         neighborhood={neighborhood}
         onAddFriendHouse={() => setIsAddingNeighbor(true)}
